@@ -15,7 +15,7 @@ func Example() {
 
 	solved := model.Solve()
 	sol, _ := solved.BestSol()
-	fmt.Println(solved.Status(), sol.ObjVal(), math.Round(sol.Val(x)), math.Round(sol.Val(y)))
+	fmt.Println(solved.Status(), sol.ObjVal(), int(math.Round(sol.Val(x))), int(math.Round(sol.Val(y))))
 	solved.Free()
 	// Output: Optimal 21 7 0
 }
