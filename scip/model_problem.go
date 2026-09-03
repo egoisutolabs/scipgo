@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "fmt"
+
 // Vars returns all variables in the optimization model.
 func (m Model) Vars() []Variable { return scipVars(m.scip, false) }
 
@@ -97,6 +99,9 @@ func (m Model) AddConsNode(node *Node, cons ConsBuilder) Constraint {
 }
 
 func (m Model) addLocalCons(node *Node, cons ConsBuilder) Constraint {
+	if cons.expr != nil {
+		panic("scip: nonlinear constraints cannot be added locally")
+	}
 	consPtr, err := m.scip.createCons(node, cons.vars(), cons.vals(), cons.lhs, cons.rhs, strOrEmpty(cons.name), true)
 	if err != nil {
 		panic("Failed to create constraint in state Solving")
@@ -132,6 +137,17 @@ func (m Model) AddConsQuadratic(
 	cons, err := m.scip.createConsQuadratic(linVars, linCoefs, quadVars1, quadVars2, quadCoefs, lhs, rhs, name)
 	if err != nil {
 		panic("Failed to create quadratic constraint")
+	}
+	return Constraint{raw: cons, scip: m.scip}
+}
+
+// AddConsNonlinear adds the constraint lhs <= expr <= rhs, where expr is a
+// nonlinear expression tree. Use Infinity or NegInfinity for a one-sided
+// constraint.
+func (m Model) AddConsNonlinear(expr Expr, lhs, rhs float64, name string) Constraint {
+	cons, err := m.scip.createConsNonlinear(expr, nil, nil, lhs, rhs, name)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create nonlinear constraint: %v", err))
 	}
 	return Constraint{raw: cons, scip: m.scip}
 }

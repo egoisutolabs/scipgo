@@ -262,6 +262,18 @@ func (s *Scip) findHeur(name string) *C.SCIP_HEUR {
 	return C.SCIPfindHeur(s.raw, cn)
 }
 
+func (s *Scip) findSepa(name string) *C.SCIP_SEPA {
+	cn := cString(name)
+	defer freeCString(cn)
+	return C.SCIPfindSepa(s.raw, cn)
+}
+
+func (s *Scip) findPresol(name string) *C.SCIP_PRESOL {
+	cn := cString(name)
+	defer freeCString(cn)
+	return C.SCIPfindPresol(s.raw, cn)
+}
+
 func (s *Scip) findNodesel(name string) *C.SCIP_NODESEL {
 	cn := cString(name)
 	defer freeCString(cn)
@@ -628,6 +640,30 @@ func (s *Scip) createConsQuadratic(linVars []Variable, linCoefs []float64,
 		C.int(len(quadVars1)), cVarSlice(quadVars1), cVarSlice(quadVars2), cDoubleSlice(quadCoefs),
 		C.double(lhs), C.double(rhs))); err != nil {
 		return nil, err
+	}
+	return cons, retcodeError(C.SCIPaddCons(s.raw, cons))
+}
+
+// createConsNonlinear adds lhs <= expr + sum(linCoefs*linVars) <= rhs.
+func (s *Scip) createConsNonlinear(expr Expr, linVars []Variable, linCoefs []float64, lhs, rhs float64, name string) (*C.SCIP_CONS, error) {
+	if len(linVars) != len(linCoefs) {
+		return nil, fmt.Errorf("linear variables (%d) and coefficients (%d) differ", len(linVars), len(linCoefs))
+	}
+	raw, err := expr.build(s)
+	if err != nil {
+		return nil, err
+	}
+	defer C.SCIPreleaseExpr(s.raw, &raw) // the constraint captures its own reference
+	cn := cString(name)
+	defer freeCString(cn)
+	var cons *C.SCIP_CONS
+	if err := retcodeError(C.SCIPcreateConsBasicNonlinear(s.raw, &cons, cn, raw, C.double(lhs), C.double(rhs))); err != nil {
+		return nil, err
+	}
+	for i := range linVars {
+		if err := retcodeError(C.SCIPaddLinearVarNonlinear(s.raw, cons, linVars[i].raw, C.double(linCoefs[i]))); err != nil {
+			return nil, err
+		}
 	}
 	return cons, retcodeError(C.SCIPaddCons(s.raw, cons))
 }

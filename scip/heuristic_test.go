@@ -111,3 +111,40 @@ func TestFoundSolHeur(t *testing.T) {
 	model.Add(NewHeur(foundSolHeur{t: t}).Name("found_sol_heur"))
 	model.Solve()
 }
+
+func TestPluginGetters(t *testing.T) {
+	m := NewModel().HideOutput().IncludeDefaultPlugins()
+	defer m.Free()
+	if len(m.Heurs()) == 0 || len(m.Separators()) == 0 || len(m.Presolvers()) == 0 {
+		t.Fatalf("heurs=%d sepas=%d presols=%d", len(m.Heurs()), len(m.Separators()), len(m.Presolvers()))
+	}
+	h, ok := m.FindHeur("rounding")
+	if !ok || h.Desc() == "" {
+		t.Fatal("rounding heuristic not found")
+	}
+	h.SetFreq(-1)
+	m.SetHeurPriority(h, 42)
+	if h.Freq() != -1 || h.Priority() != 42 {
+		t.Fatalf("freq=%d prio=%d", h.Freq(), h.Priority())
+	}
+	s, ok := m.FindSeparator("gomory")
+	if !ok {
+		t.Fatal("gomory separator not found")
+	}
+	s.SetFreq(0)
+	m.SetSepaPriority(s, 7)
+	if s.Freq() != 0 || s.Priority() != 7 {
+		t.Fatalf("sepa freq=%d prio=%d", s.Freq(), s.Priority())
+	}
+	p, ok := m.FindPresolver("trivial")
+	if !ok || p.Name() != "trivial" || p.NCalls() != 0 {
+		t.Fatalf("presolver %+v ok=%v", p, ok)
+	}
+	m.SetPresolPriority(p, 9)
+	if p.Priority() != 9 {
+		t.Fatalf("presol prio=%d", p.Priority())
+	}
+	if _, ok := m.FindPresolver("nope"); ok {
+		t.Fatal("found nonexistent presolver")
+	}
+}

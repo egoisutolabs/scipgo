@@ -75,6 +75,31 @@ model.Add(scip.NewCons().Name("c").Eq(1).Coef(x, 1).Coef(y, 1))
 solved := model.Solve()
 ```
 
+## Nonlinear constraints
+
+Build an expression tree from variables and constants and add it as a
+constraint; nothing touches SCIP until the constraint is added:
+
+```go
+x := model.AddVar(-1, 1, 1, "x", scip.VarTypeContinuous)
+y := model.AddVar(-1, 1, 1, "y", scip.VarTypeContinuous)
+model.AddConsNonlinear(x.Expr().Pow(2).Add(y.Expr().Pow(2)), scip.NegInfinity, 1, "disc")
+// or in SCIP's own syntax, resolved by variable name when added:
+model.AddConsNonlinear(scip.ParseExpr("<x>^2 + <y>^2"), scip.NegInfinity, 1, "disc")
+// or through the builder, mixing a linear part:
+model.Add(scip.NewCons().Expression(x.Expr().Mul(y.Expr())).Coef(x, 2).Le(1))
+```
+
+`Sum`, `WeightedSum`, `Product`, `Pow`, `SignPower`, `Exp`, `Log`, `Sin`,
+`Cos`, `Abs` and `Entropy` cover SCIP's expression handlers.
+
+## Plugins included by default
+
+`Heurs`, `Separators` and `Presolvers` list SCIP's built-in plugins;
+`FindHeur`, `FindSeparator` and `FindPresolver` look one up by name. Each
+wrapper exposes its name, priority and statistics, and frequency/priority
+setters let you tune or disable a plugin without touching parameter strings.
+
 ## Custom plugins
 
 Plugins (branch rules, pricers, heuristics, separators, event handlers,

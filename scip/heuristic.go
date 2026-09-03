@@ -19,6 +19,18 @@ func (h Heur) Inner() *C.SCIP_HEUR { return h.raw }
 // Name returns the name of the heuristic.
 func (h Heur) Name() string { return goString(C.SCIPheurGetName(h.raw)) }
 
+// Desc returns the description of the heuristic.
+func (h Heur) Desc() string { return goString(C.SCIPheurGetDesc(h.raw)) }
+
+// Priority returns the priority of the heuristic.
+func (h Heur) Priority() int32 { return int32(C.SCIPheurGetPriority(h.raw)) }
+
+// Freq returns the calling frequency of the heuristic; -1 means disabled.
+func (h Heur) Freq() int32 { return int32(C.SCIPheurGetFreq(h.raw)) }
+
+// SetFreq sets the calling frequency of the heuristic; -1 disables it.
+func (h Heur) SetFreq(freq int32) { C.SCIPheurSetFreq(h.raw, C.int(freq)) }
+
 // NCalls returns the number of times the heuristic was called during the
 // solving process.
 func (h Heur) NCalls() int { return int(C.SCIPheurGetNCalls(h.raw)) }

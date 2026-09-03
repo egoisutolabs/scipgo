@@ -16,6 +16,10 @@
 //	solved := model.Solve()
 //	fmt.Println(solved.Status(), solved.ObjVal())
 //
+// Nonlinear constraints are stated as expression trees: Variable.Expr, Const,
+// Sum, Product, Pow and friends build an Expr, and Model.AddConsNonlinear or
+// ConsBuilder.Expression adds it. ParseExpr accepts SCIP's own syntax.
+//
 // Custom plugins (BranchRule, Conshdlr, Eventhdlr, Heuristic, NodeSel,
 // Pricer, Separator) are Go interfaces registered through Model.Add or the
 // Include* methods. A plugin that also implements Copyable is copied into the

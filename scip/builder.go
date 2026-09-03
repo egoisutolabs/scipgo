@@ -120,6 +120,7 @@ type ConsBuilder struct {
 	rhs        float64
 	name       *string
 	coefs      []CoefPair
+	expr       *Expr
 	modifiable *bool
 	removable  *bool
 	separated  *bool
@@ -131,6 +132,19 @@ func NewCons() ConsBuilder {
 		lhs: math.Inf(-1),
 		rhs: math.Inf(1),
 	}
+}
+
+// Bounds sets both sides: lhs <= expr <= rhs.
+func (b ConsBuilder) Bounds(lhs, rhs float64) ConsBuilder {
+	b.lhs, b.rhs = lhs, rhs
+	return b
+}
+
+// Expression makes this a nonlinear constraint on e; any Coef terms are added
+// as its linear part.
+func (b ConsBuilder) Expression(e Expr) ConsBuilder {
+	b.expr = &e
+	return b
 }
 
 // Le sets the constraint to the form expr <= val.
@@ -203,7 +217,16 @@ func (b ConsBuilder) Separated(separate bool) ConsBuilder {
 
 // AddTo adds the constraint to a model in the ProblemCreated stage.
 func (b ConsBuilder) AddTo(m Model) Constraint {
-	c := m.AddCons(b.vars(), b.vals(), b.lhs, b.rhs, b.defaultName(m.NConss()))
+	var c Constraint
+	if b.expr != nil {
+		raw, err := m.scip.createConsNonlinear(*b.expr, b.vars(), b.vals(), b.lhs, b.rhs, b.defaultName(m.NConss()))
+		if err != nil {
+			panic(fmt.Sprintf("Failed to create nonlinear constraint: %v", err))
+		}
+		c = Constraint{raw: raw, scip: m.scip}
+	} else {
+		c = m.AddCons(b.vars(), b.vals(), b.lhs, b.rhs, b.defaultName(m.NConss()))
+	}
 	b.applyFlags(m, c)
 	return c
 }

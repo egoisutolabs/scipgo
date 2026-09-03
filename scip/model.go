@@ -185,6 +185,72 @@ func (m Model) FreeTransform() Model {
 	return m
 }
 
+// Heurs returns all primal heuristics included in the model.
+func (m Model) Heurs() []Heur {
+	n := int(C.SCIPgetNHeurs(m.scip.raw))
+	arr := C.SCIPgetHeurs(m.scip.raw)
+	out := make([]Heur, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, Heur{raw: cAt(arr, i), scip: m.scip})
+	}
+	return out
+}
+
+// Separators returns all separators included in the model.
+func (m Model) Separators() []SCIPSeparator {
+	n := int(C.SCIPgetNSepas(m.scip.raw))
+	arr := C.SCIPgetSepas(m.scip.raw)
+	out := make([]SCIPSeparator, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, SCIPSeparator{raw: cAt(arr, i)})
+	}
+	return out
+}
+
+// FindSeparator finds a separator by name.
+func (m Model) FindSeparator(name string) (SCIPSeparator, bool) {
+	raw := m.scip.findSepa(name)
+	if raw == nil {
+		return SCIPSeparator{}, false
+	}
+	return SCIPSeparator{raw: raw}, true
+}
+
+// Presolvers returns all presolvers included in the model.
+func (m Model) Presolvers() []Presolver {
+	n := int(C.SCIPgetNPresols(m.scip.raw))
+	arr := C.SCIPgetPresols(m.scip.raw)
+	out := make([]Presolver, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, Presolver{raw: cAt(arr, i)})
+	}
+	return out
+}
+
+// FindPresolver finds a presolver by name.
+func (m Model) FindPresolver(name string) (Presolver, bool) {
+	raw := m.scip.findPresol(name)
+	if raw == nil {
+		return Presolver{}, false
+	}
+	return Presolver{raw: raw}, true
+}
+
+// SetHeurPriority sets the priority of a primal heuristic.
+func (m Model) SetHeurPriority(h Heur, priority int32) {
+	mustOK(C.SCIPsetHeurPriority(m.scip.raw, h.raw, C.int(priority)))
+}
+
+// SetSepaPriority sets the priority of a separator.
+func (m Model) SetSepaPriority(s SCIPSeparator, priority int32) {
+	mustOK(C.SCIPsetSepaPriority(m.scip.raw, s.raw, C.int(priority)))
+}
+
+// SetPresolPriority sets the priority of a presolver.
+func (m Model) SetPresolPriority(p Presolver, priority int32) {
+	mustOK(C.SCIPsetPresolPriority(m.scip.raw, p.raw, C.int(priority)))
+}
+
 // IncludeBranchRule includes a new branch rule in the model.
 // It panics if the inclusion fails (e.g. a rule with the same name exists).
 func (m Model) IncludeBranchRule(name, desc string, priority, maxdepth int32, maxbounddist float64, rule BranchRule) {
