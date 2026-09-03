@@ -7,6 +7,15 @@ import "C"
 
 import "fmt"
 
+// Infinity is SCIP's notion of positive infinity.
+const Infinity = 1e+20
+
+// NegInfinity is SCIP's notion of negative infinity.
+const NegInfinity = -1e+20
+
+// scipInvalid mirrors SCIP's SCIP_INVALID macro (1e99).
+const scipInvalid = 1e99
+
 // FindHeur finds a primal heuristic by its name (e.g. "completesol"), giving
 // access to its runtime statistics.
 func (m Model) FindHeur(name string) (Heur, bool) { return findHeurOf(m.scip, name) }

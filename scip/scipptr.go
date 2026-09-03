@@ -756,7 +756,7 @@ func (s *Scip) addConsCoefSetppc(cons Constraint, v Variable) error {
 }
 
 func (s *Scip) setConsModifiable(cons Constraint, modifiable bool) error {
-	return retcodeError(C.SCIPsetConsModifiable(s.raw, cons.raw, SCIPBool(modifiable)))
+	return retcodeError(C.SCIPsetConsModifiable(s.raw, cons.raw, cBool(modifiable)))
 }
 
 func (s *Scip) consIsModifiable(cons Constraint) bool {
@@ -764,7 +764,7 @@ func (s *Scip) consIsModifiable(cons Constraint) bool {
 }
 
 func (s *Scip) setConsRemovable(cons Constraint, removable bool) error {
-	return retcodeError(C.SCIPsetConsRemovable(s.raw, cons.raw, SCIPBool(removable)))
+	return retcodeError(C.SCIPsetConsRemovable(s.raw, cons.raw, cBool(removable)))
 }
 
 func (s *Scip) consIsRemovable(cons Constraint) bool {
@@ -772,7 +772,7 @@ func (s *Scip) consIsRemovable(cons Constraint) bool {
 }
 
 func (s *Scip) setConsSeparated(cons Constraint, separate bool) error {
-	return retcodeError(C.SCIPsetConsSeparated(s.raw, cons.raw, SCIPBool(separate)))
+	return retcodeError(C.SCIPsetConsSeparated(s.raw, cons.raw, cBool(separate)))
 }
 
 func (s *Scip) consIsSeparated(cons Constraint) bool {
@@ -887,16 +887,16 @@ func (s *Scip) createEmptyRow(rb *RowBuilder) (*C.SCIP_ROW, error) {
 	switch {
 	case rb.source != nil && rb.source.separator != nil:
 		rc = C.SCIPcreateEmptyRowSepa(s.raw, &rowPtr, rb.source.separator.raw, cn,
-			C.double(rb.lhs), C.double(rb.rhs), SCIPBool(local), SCIPBool(modifiable), SCIPBool(removable))
+			C.double(rb.lhs), C.double(rb.rhs), cBool(local), cBool(modifiable), cBool(removable))
 	case rb.source != nil && rb.source.constraintHandler != nil:
 		rc = C.SCIPcreateEmptyRowConshdlr(s.raw, &rowPtr, rb.source.constraintHandler.raw, cn,
-			C.double(rb.lhs), C.double(rb.rhs), SCIPBool(local), SCIPBool(modifiable), SCIPBool(removable))
+			C.double(rb.lhs), C.double(rb.rhs), cBool(local), cBool(modifiable), cBool(removable))
 	case rb.source != nil && rb.source.constraint != nil:
 		rc = C.SCIPcreateEmptyRowCons(s.raw, &rowPtr, rb.source.constraint.raw, cn,
-			C.double(rb.lhs), C.double(rb.rhs), SCIPBool(local), SCIPBool(modifiable), SCIPBool(removable))
+			C.double(rb.lhs), C.double(rb.rhs), cBool(local), cBool(modifiable), cBool(removable))
 	default:
 		rc = C.SCIPcreateEmptyRowUnspec(s.raw, &rowPtr, cn,
-			C.double(rb.lhs), C.double(rb.rhs), SCIPBool(local), SCIPBool(modifiable), SCIPBool(removable))
+			C.double(rb.lhs), C.double(rb.rhs), cBool(local), cBool(modifiable), cBool(removable))
 	}
 	if err := retcodeError(rc); err != nil {
 		return nil, err
@@ -906,7 +906,7 @@ func (s *Scip) createEmptyRow(rb *RowBuilder) (*C.SCIP_ROW, error) {
 
 func (s *Scip) addRow(row Row, forceCut bool) (bool, error) {
 	var infeasible C.uint
-	if err := retcodeError(C.SCIPaddRow(s.raw, row.raw, SCIPBool(forceCut), &infeasible)); err != nil {
+	if err := retcodeError(C.SCIPaddRow(s.raw, row.raw, cBool(forceCut), &infeasible)); err != nil {
 		return false, err
 	}
 	return infeasible != 0, nil
@@ -1089,13 +1089,6 @@ func (s *Scip) copyPluginsTo(target *Scip) (valid bool, err error) {
 }
 
 // ------------------------------------------------------------- helpers
-
-func cInt(b bool) C.int {
-	if b {
-		return 1
-	}
-	return 0
-}
 
 func boolOr(p *bool, def bool) bool {
 	if p == nil {

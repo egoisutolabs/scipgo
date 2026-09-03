@@ -125,7 +125,7 @@ func (c SCIPConshdlr) CreateEmptyRow(model Model, name string, lhs, rhs float64,
 	defer freeCString(cn)
 	var row *C.SCIP_ROW
 	if err := retcodeError(C.SCIPcreateEmptyRowConshdlr(model.scip.raw, &row, c.raw, cn,
-		C.double(lhs), C.double(rhs), SCIPBool(local), SCIPBool(modifiable), SCIPBool(removable))); err != nil {
+		C.double(lhs), C.double(rhs), cBool(local), cBool(modifiable), cBool(removable))); err != nil {
 		return Row{}, err
 	}
 	return Row{raw: row, scip: model.scip}, nil

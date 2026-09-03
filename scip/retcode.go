@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "fmt"
+
 // Retcode represents the possible return codes from SCIP functions.
 type Retcode int
 
@@ -159,4 +161,20 @@ func retcodeToC(r Retcode) C.SCIP_RETCODE {
 	default:
 		return C.SCIP_ERROR
 	}
+}
+
+// mustOK panics if the given SCIP retcode is not SCIP_OKAY, mirroring the
+// Rust scip_call_panic! macro.
+func mustOK(rc C.SCIP_RETCODE) {
+	if r := retcodeFromC(rc); r != RetcodeOkay {
+		panic(fmt.Sprintf("SCIP call failed with retcode %v", r))
+	}
+}
+
+// retcodeError converts a SCIP retcode into a Retcode error value, or nil.
+func retcodeError(rc C.SCIP_RETCODE) error {
+	if rc == C.SCIP_OKAY {
+		return nil
+	}
+	return retcodeFromC(rc)
 }
