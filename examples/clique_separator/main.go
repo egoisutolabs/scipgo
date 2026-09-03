@@ -74,7 +74,7 @@ func (s *cliqueSeparator) findClique(graph map[int]map[int]bool, vars []scip.Var
 	return clique
 }
 
-func (s *cliqueSeparator) ExecuteLP(model scip.Model, sepa scip.SCIPSeparator) scip.SeparationResult {
+func (s *cliqueSeparator) ExecuteLP(model scip.Model, sepa scip.SeparatorPlugin) scip.SeparationResult {
 	fmt.Println("-- CliqueSeparator: Executing LP separation")
 
 	vars := model.Vars()

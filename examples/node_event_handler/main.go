@@ -20,7 +20,7 @@ func (h *nodeInfoEventHandler) GetEventMask() scip.EventMask {
 	return scip.EventMaskNodeFocused
 }
 
-func (h *nodeInfoEventHandler) Execute(model scip.Model, _ scip.SCIPEventhdlr, _ scip.Event) {
+func (h *nodeInfoEventHandler) Execute(model scip.Model, _ scip.EventhdlrPlugin, _ scip.Event) {
 	currentNode := model.FocusNode()
 	h.mu.Lock()
 	h.runs++

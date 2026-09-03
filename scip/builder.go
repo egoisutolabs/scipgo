@@ -271,16 +271,16 @@ func (b ConsBuilder) applyFlags(m Model, c Constraint) {
 
 // RowSource describes where a row created by RowBuilder comes from.
 type RowSource struct {
-	separator         *SCIPSeparator
-	constraintHandler *SCIPConshdlr
+	separator         *SeparatorPlugin
+	constraintHandler *ConshdlrPlugin
 	constraint        *Constraint
 }
 
 // SourceSepa marks the row as coming from a separator.
-func SourceSepa(sep SCIPSeparator) RowSource { return RowSource{separator: &sep} }
+func SourceSepa(sep SeparatorPlugin) RowSource { return RowSource{separator: &sep} }
 
 // SourceConshdlr marks the row as coming from a constraint handler.
-func SourceConshdlr(ch SCIPConshdlr) RowSource { return RowSource{constraintHandler: &ch} }
+func SourceConshdlr(ch ConshdlrPlugin) RowSource { return RowSource{constraintHandler: &ch} }
 
 // SourceCons marks the row as coming from a constraint.
 func SourceCons(c Constraint) RowSource { return RowSource{constraint: &c} }

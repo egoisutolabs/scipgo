@@ -10,10 +10,10 @@ import "C"
 // ConshdlrProp and Copyable.
 type Conshdlr interface {
 	// Check reports whether the (primal) solution satisfies the constraint.
-	Check(model Model, conshdlr SCIPConshdlr, solution Solution) bool
+	Check(model Model, conshdlr ConshdlrPlugin, solution Solution) bool
 	// Enforce enforces the constraint for the current sub-problem's (LP)
 	// solution.
-	Enforce(model Model, conshdlr SCIPConshdlr) ConshdlrResult
+	Enforce(model Model, conshdlr ConshdlrPlugin) ConshdlrResult
 }
 
 // ConshdlrEnfoPS is optionally implemented by a Conshdlr to enforce pseudo
@@ -22,19 +22,19 @@ type Conshdlr interface {
 // the pseudo solution's objective exceeds the cutoff bound, in which case
 // ConshdlrResultDidNotRun is allowed.
 type ConshdlrEnfoPS interface {
-	EnforcePseudo(model Model, conshdlr SCIPConshdlr, solInfeasible, objInfeasible bool) ConshdlrResult
+	EnforcePseudo(model Model, conshdlr ConshdlrPlugin, solInfeasible, objInfeasible bool) ConshdlrResult
 }
 
 // ConshdlrSepa is optionally implemented by a Conshdlr to separate the LP
 // solution of the current node.
 type ConshdlrSepa interface {
-	SeparateLP(model Model, conshdlr SCIPConshdlr) SeparationResult
+	SeparateLP(model Model, conshdlr ConshdlrPlugin) SeparationResult
 }
 
 // ConshdlrProp is optionally implemented by a Conshdlr to propagate variable
 // domains before the LP of each node is solved.
 type ConshdlrProp interface {
-	Propagate(model Model, conshdlr SCIPConshdlr) PropResult
+	Propagate(model Model, conshdlr ConshdlrPlugin) PropResult
 }
 
 // PropResult is the result of a propagation callback.
@@ -105,22 +105,22 @@ func conshdlrResultToC(r ConshdlrResult) C.SCIP_RESULT {
 	}
 }
 
-// SCIPConshdlr is a wrapper for the internal SCIP constraint handler.
-type SCIPConshdlr struct {
+// ConshdlrPlugin is a wrapper for the internal SCIP constraint handler.
+type ConshdlrPlugin struct {
 	raw *C.SCIP_CONSHDLR
 }
 
 // Inner returns a raw pointer to the underlying SCIP_CONSHDLR.
-func (c SCIPConshdlr) Inner() *C.SCIP_CONSHDLR { return c.raw }
+func (c ConshdlrPlugin) Inner() *C.SCIP_CONSHDLR { return c.raw }
 
 // Name returns the name of the constraint handler.
-func (c SCIPConshdlr) Name() string { return goString(C.SCIPconshdlrGetName(c.raw)) }
+func (c ConshdlrPlugin) Name() string { return goString(C.SCIPconshdlrGetName(c.raw)) }
 
 // Desc returns the description of the constraint handler.
-func (c SCIPConshdlr) Desc() string { return goString(C.SCIPconshdlrGetDesc(c.raw)) }
+func (c ConshdlrPlugin) Desc() string { return goString(C.SCIPconshdlrGetDesc(c.raw)) }
 
 // CreateEmptyRow creates an empty row for the constraint handler.
-func (c SCIPConshdlr) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
+func (c ConshdlrPlugin) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
 	cn := cString(name)
 	defer freeCString(cn)
 	var row *C.SCIP_ROW

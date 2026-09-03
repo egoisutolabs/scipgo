@@ -30,7 +30,7 @@ type rowTesterEventHandler struct {
 
 func (h rowTesterEventHandler) GetEventMask() EventMask { return EventMaskFirstLpSolved }
 
-func (h rowTesterEventHandler) Execute(model Model, _ SCIPEventhdlr, _ Event) {
+func (h rowTesterEventHandler) Execute(model Model, _ EventhdlrPlugin, _ Event) {
 	// Since SCIP 10 this event also fires for the initial (empty) LP, where
 	// the constraint has no LP row yet; only inspect once it does.
 	firstCons := model.Conss()[0]

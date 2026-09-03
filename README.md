@@ -109,7 +109,7 @@ builders, mirroring russcip's traits:
 ```go
 type firstBranchRule struct{}
 
-func (firstBranchRule) Execute(model scip.Model, _ scip.SCIPBranchRule,
+func (firstBranchRule) Execute(model scip.Model, _ scip.BranchRulePlugin,
 	cands []scip.BranchingCandidate) scip.BranchingResult {
 	return scip.BranchOn(cands[0])
 }

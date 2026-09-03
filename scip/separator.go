@@ -8,7 +8,7 @@ import "C"
 // Separator is the interface for defining custom separation routines.
 type Separator interface {
 	// ExecuteLP executes the separation routine on LP solutions.
-	ExecuteLP(model Model, sep SCIPSeparator) SeparationResult
+	ExecuteLP(model Model, sep SeparatorPlugin) SeparationResult
 }
 
 // SeparationResult is the result of a separation routine.
@@ -49,37 +49,37 @@ func separationResultToC(r SeparationResult) C.SCIP_RESULT {
 	}
 }
 
-// SCIPSeparator is a wrapper struct for the internal SCIP separator object.
-type SCIPSeparator struct {
+// SeparatorPlugin is a wrapper struct for the internal SCIP separator object.
+type SeparatorPlugin struct {
 	raw *C.SCIP_SEPA
 }
 
 // Inner returns the internal raw pointer of the separator.
-func (s SCIPSeparator) Inner() *C.SCIP_SEPA { return s.raw }
+func (s SeparatorPlugin) Inner() *C.SCIP_SEPA { return s.raw }
 
 // Name returns the name of the separator.
-func (s SCIPSeparator) Name() string { return goString(C.SCIPsepaGetName(s.raw)) }
+func (s SeparatorPlugin) Name() string { return goString(C.SCIPsepaGetName(s.raw)) }
 
 // Desc returns the description of the separator.
-func (s SCIPSeparator) Desc() string { return goString(C.SCIPsepaGetDesc(s.raw)) }
+func (s SeparatorPlugin) Desc() string { return goString(C.SCIPsepaGetDesc(s.raw)) }
 
 // Priority returns the priority of the separator.
-func (s SCIPSeparator) Priority() int32 { return int32(C.SCIPsepaGetPriority(s.raw)) }
+func (s SeparatorPlugin) Priority() int32 { return int32(C.SCIPsepaGetPriority(s.raw)) }
 
 // Freq returns the frequency of the separator.
-func (s SCIPSeparator) Freq() int32 { return int32(C.SCIPsepaGetFreq(s.raw)) }
+func (s SeparatorPlugin) Freq() int32 { return int32(C.SCIPsepaGetFreq(s.raw)) }
 
 // SetFreq sets the frequency of the separator.
-func (s *SCIPSeparator) SetFreq(freq int32) { C.SCIPsepaSetFreq(s.raw, C.int(freq)) }
+func (s *SeparatorPlugin) SetFreq(freq int32) { C.SCIPsepaSetFreq(s.raw, C.int(freq)) }
 
 // MaxBoundDist returns the maxbounddist of the separator.
-func (s SCIPSeparator) MaxBoundDist() float64 { return float64(C.SCIPsepaGetMaxbounddist(s.raw)) }
+func (s SeparatorPlugin) MaxBoundDist() float64 { return float64(C.SCIPsepaGetMaxbounddist(s.raw)) }
 
 // IsDelayed returns whether the separator is delayed.
-func (s SCIPSeparator) IsDelayed() bool { return C.SCIPsepaIsDelayed(s.raw) != 0 }
+func (s SeparatorPlugin) IsDelayed() bool { return C.SCIPsepaIsDelayed(s.raw) != 0 }
 
 // CreateEmptyRow creates an empty LP row.
-func (s SCIPSeparator) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
+func (s SeparatorPlugin) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
 	cn := cString(name)
 	defer freeCString(cn)
 	var row *C.SCIP_ROW

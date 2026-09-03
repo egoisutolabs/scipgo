@@ -18,14 +18,14 @@ const scipInvalid = 1e99
 
 // FindHeur finds a primal heuristic by its name (e.g. "completesol"), giving
 // access to its runtime statistics.
-func (m Model) FindHeur(name string) (Heur, bool) { return findHeurOf(m.scip, name) }
+func (m Model) FindHeur(name string) (HeurPlugin, bool) { return findHeurOf(m.scip, name) }
 
-func findHeurOf(s *Scip, name string) (Heur, bool) {
+func findHeurOf(s *Scip, name string) (HeurPlugin, bool) {
 	raw := s.findHeur(name)
 	if raw == nil {
-		return Heur{}, false
+		return HeurPlugin{}, false
 	}
-	return Heur{raw: raw, scip: s}, true
+	return HeurPlugin{raw: raw, scip: s}, true
 }
 
 // Model represents an optimization model backed by a SCIP instance.
@@ -195,68 +195,68 @@ func (m Model) FreeTransform() Model {
 }
 
 // Heurs returns all primal heuristics included in the model.
-func (m Model) Heurs() []Heur {
+func (m Model) Heurs() []HeurPlugin {
 	n := int(C.SCIPgetNHeurs(m.scip.raw))
 	arr := C.SCIPgetHeurs(m.scip.raw)
-	out := make([]Heur, 0, n)
+	out := make([]HeurPlugin, 0, n)
 	for i := 0; i < n; i++ {
-		out = append(out, Heur{raw: cAt(arr, i), scip: m.scip})
+		out = append(out, HeurPlugin{raw: cAt(arr, i), scip: m.scip})
 	}
 	return out
 }
 
 // Separators returns all separators included in the model.
-func (m Model) Separators() []SCIPSeparator {
+func (m Model) Separators() []SeparatorPlugin {
 	n := int(C.SCIPgetNSepas(m.scip.raw))
 	arr := C.SCIPgetSepas(m.scip.raw)
-	out := make([]SCIPSeparator, 0, n)
+	out := make([]SeparatorPlugin, 0, n)
 	for i := 0; i < n; i++ {
-		out = append(out, SCIPSeparator{raw: cAt(arr, i)})
+		out = append(out, SeparatorPlugin{raw: cAt(arr, i)})
 	}
 	return out
 }
 
 // FindSeparator finds a separator by name.
-func (m Model) FindSeparator(name string) (SCIPSeparator, bool) {
+func (m Model) FindSeparator(name string) (SeparatorPlugin, bool) {
 	raw := m.scip.findSepa(name)
 	if raw == nil {
-		return SCIPSeparator{}, false
+		return SeparatorPlugin{}, false
 	}
-	return SCIPSeparator{raw: raw}, true
+	return SeparatorPlugin{raw: raw}, true
 }
 
 // Presolvers returns all presolvers included in the model.
-func (m Model) Presolvers() []Presolver {
+func (m Model) Presolvers() []PresolverPlugin {
 	n := int(C.SCIPgetNPresols(m.scip.raw))
 	arr := C.SCIPgetPresols(m.scip.raw)
-	out := make([]Presolver, 0, n)
+	out := make([]PresolverPlugin, 0, n)
 	for i := 0; i < n; i++ {
-		out = append(out, Presolver{raw: cAt(arr, i)})
+		out = append(out, PresolverPlugin{raw: cAt(arr, i)})
 	}
 	return out
 }
 
 // FindPresolver finds a presolver by name.
-func (m Model) FindPresolver(name string) (Presolver, bool) {
+func (m Model) FindPresolver(name string) (PresolverPlugin, bool) {
 	raw := m.scip.findPresol(name)
 	if raw == nil {
-		return Presolver{}, false
+		return PresolverPlugin{}, false
 	}
-	return Presolver{raw: raw}, true
+	return PresolverPlugin{raw: raw}, true
 }
 
 // SetHeurPriority sets the priority of a primal heuristic.
-func (m Model) SetHeurPriority(h Heur, priority int32) {
+func (m Model) SetHeurPriority(h HeurPlugin, priority int32) {
 	mustOK(C.SCIPsetHeurPriority(m.scip.raw, h.raw, C.int(priority)))
 }
 
 // SetSepaPriority sets the priority of a separator.
-func (m Model) SetSepaPriority(s SCIPSeparator, priority int32) {
+func (m Model) SetSepaPriority(s SeparatorPlugin, priority int32) {
 	mustOK(C.SCIPsetSepaPriority(m.scip.raw, s.raw, C.int(priority)))
 }
 
 // SetPresolPriority sets the priority of a presolver.
-func (m Model) SetPresolPriority(p Presolver, priority int32) {
+func (m Model) SetPresolPriority(p PresolverPlugin, priority int32) {
 	mustOK(C.SCIPsetPresolPriority(m.scip.raw, p.raw, C.int(priority)))
 }
 
@@ -351,12 +351,12 @@ func (m Model) ScipPtr() *C.SCIP { return m.Inner() }
 
 // FindNodesel finds an included node selector by its name (e.g. "bfs"),
 // giving access to its priorities and statistics.
-func (m Model) FindNodesel(name string) (SCIPNodesel, bool) {
+func (m Model) FindNodesel(name string) (NodeselPlugin, bool) {
 	raw := m.scip.findNodesel(name)
 	if raw == nil {
-		return SCIPNodesel{}, false
+		return NodeselPlugin{}, false
 	}
-	return SCIPNodesel{raw: raw}, true
+	return NodeselPlugin{raw: raw}, true
 }
 
 // Status returns the status of the optimization model.

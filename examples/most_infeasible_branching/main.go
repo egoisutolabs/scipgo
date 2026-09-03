@@ -11,7 +11,7 @@ import (
 // fractionality (closest to 0.5) to branch on.
 type mostInfeasibleBranching struct{}
 
-func (mostInfeasibleBranching) Execute(model scip.Model, _ scip.SCIPBranchRule, candidates []scip.BranchingCandidate) scip.BranchingResult {
+func (mostInfeasibleBranching) Execute(model scip.Model, _ scip.BranchRulePlugin, candidates []scip.BranchingCandidate) scip.BranchingResult {
 	best := candidates[0]
 	bestFractionality := abs(best.Frac - 0.5)
 

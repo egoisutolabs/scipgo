@@ -10,7 +10,7 @@ type Eventhdlr interface {
 	// GetEventMask returns the type of the events the handler wants to catch.
 	GetEventMask() EventMask
 	// Execute executes the event handler.
-	Execute(model Model, eventhdlr SCIPEventhdlr, event Event)
+	Execute(model Model, eventhdlr EventhdlrPlugin, event Event)
 }
 
 // EventMask represents different states or actions within an optimization
@@ -85,16 +85,16 @@ const (
 // Matches reports whether the event mask overlaps with the given mask.
 func (m EventMask) Matches(mask EventMask) bool { return m&mask != 0 }
 
-// SCIPEventhdlr is a wrapper for the internal SCIP event handler.
-type SCIPEventhdlr struct {
+// EventhdlrPlugin is a wrapper for the internal SCIP event handler.
+type EventhdlrPlugin struct {
 	raw *C.SCIP_EVENTHDLR
 }
 
 // Inner returns the internal raw pointer of the event handler.
-func (h SCIPEventhdlr) Inner() *C.SCIP_EVENTHDLR { return h.raw }
+func (h EventhdlrPlugin) Inner() *C.SCIP_EVENTHDLR { return h.raw }
 
 // Name returns the name of the event handler.
-func (h SCIPEventhdlr) Name() string { return goString(C.SCIPeventhdlrGetName(h.raw)) }
+func (h EventhdlrPlugin) Name() string { return goString(C.SCIPeventhdlrGetName(h.raw)) }
 
 // Event is a wrapper for the internal SCIP event.
 type Event struct {

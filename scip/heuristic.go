@@ -5,43 +5,43 @@ package scip
 */
 import "C"
 
-// Heur is a primal heuristic that is part of the model, giving access to its
+// HeurPlugin is a primal heuristic that is part of the model, giving access to its
 // runtime statistics (how often it ran and how many solutions it found).
 // Obtain one via Model.FindHeur.
-type Heur struct {
+type HeurPlugin struct {
 	raw  *C.SCIP_HEUR
 	scip *Scip
 }
 
 // Inner returns a pointer to the underlying SCIP_HEUR.
-func (h Heur) Inner() *C.SCIP_HEUR { return h.raw }
+func (h HeurPlugin) Inner() *C.SCIP_HEUR { return h.raw }
 
 // Name returns the name of the heuristic.
-func (h Heur) Name() string { return goString(C.SCIPheurGetName(h.raw)) }
+func (h HeurPlugin) Name() string { return goString(C.SCIPheurGetName(h.raw)) }
 
 // Desc returns the description of the heuristic.
-func (h Heur) Desc() string { return goString(C.SCIPheurGetDesc(h.raw)) }
+func (h HeurPlugin) Desc() string { return goString(C.SCIPheurGetDesc(h.raw)) }
 
 // Priority returns the priority of the heuristic.
-func (h Heur) Priority() int32 { return int32(C.SCIPheurGetPriority(h.raw)) }
+func (h HeurPlugin) Priority() int32 { return int32(C.SCIPheurGetPriority(h.raw)) }
 
 // Freq returns the calling frequency of the heuristic; -1 means disabled.
-func (h Heur) Freq() int32 { return int32(C.SCIPheurGetFreq(h.raw)) }
+func (h HeurPlugin) Freq() int32 { return int32(C.SCIPheurGetFreq(h.raw)) }
 
 // SetFreq sets the calling frequency of the heuristic; -1 disables it.
-func (h Heur) SetFreq(freq int32) { C.SCIPheurSetFreq(h.raw, C.int(freq)) }
+func (h HeurPlugin) SetFreq(freq int32) { C.SCIPheurSetFreq(h.raw, C.int(freq)) }
 
 // NCalls returns the number of times the heuristic was called during the
 // solving process.
-func (h Heur) NCalls() int { return int(C.SCIPheurGetNCalls(h.raw)) }
+func (h HeurPlugin) NCalls() int { return int(C.SCIPheurGetNCalls(h.raw)) }
 
 // NSolsFound returns the number of solutions the heuristic found during the
 // solving process.
-func (h Heur) NSolsFound() int { return int(C.SCIPheurGetNSolsFound(h.raw)) }
+func (h HeurPlugin) NSolsFound() int { return int(C.SCIPheurGetNSolsFound(h.raw)) }
 
 // NBestSolsFound returns the number of new best (incumbent) solutions the
 // heuristic found during the solving process.
-func (h Heur) NBestSolsFound() int { return int(C.SCIPheurGetNBestSolsFound(h.raw)) }
+func (h HeurPlugin) NBestSolsFound() int { return int(C.SCIPheurGetNBestSolsFound(h.raw)) }
 
 // Heuristic is the interface for defining custom primal heuristics.
 // Implementations should use a pointer receiver when they need mutation.

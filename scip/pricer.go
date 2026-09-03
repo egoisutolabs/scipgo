@@ -11,7 +11,7 @@ type Pricer interface {
 	//
 	// farkas: if true, the pricer should generate columns to repair
 	// feasibility of the LP.
-	GenerateColumns(model Model, pricer SCIPPricer, farkas bool) PricerResult
+	GenerateColumns(model Model, pricer PricerPlugin, farkas bool) PricerResult
 }
 
 // PricerResultState represents the possible states of a PricerResult.
@@ -43,25 +43,25 @@ func pricerStateToC(s PricerResultState) C.SCIP_RESULT {
 	}
 }
 
-// SCIPPricer is a wrapper around a SCIP pricer object.
-type SCIPPricer struct {
+// PricerPlugin is a wrapper around a SCIP pricer object.
+type PricerPlugin struct {
 	raw *C.SCIP_PRICER
 }
 
 // Inner returns the internal raw pointer of the pricer.
-func (p SCIPPricer) Inner() *C.SCIP_PRICER { return p.raw }
+func (p PricerPlugin) Inner() *C.SCIP_PRICER { return p.raw }
 
 // Name returns the name of the pricer.
-func (p SCIPPricer) Name() string { return goString(C.SCIPpricerGetName(p.raw)) }
+func (p PricerPlugin) Name() string { return goString(C.SCIPpricerGetName(p.raw)) }
 
 // Desc returns the description of the pricer.
-func (p SCIPPricer) Desc() string { return goString(C.SCIPpricerGetDesc(p.raw)) }
+func (p PricerPlugin) Desc() string { return goString(C.SCIPpricerGetDesc(p.raw)) }
 
 // Priority returns the priority of the pricer.
-func (p SCIPPricer) Priority() int32 { return int32(C.SCIPpricerGetPriority(p.raw)) }
+func (p PricerPlugin) Priority() int32 { return int32(C.SCIPpricerGetPriority(p.raw)) }
 
 // IsDelayed returns the delay setting of the pricer.
-func (p SCIPPricer) IsDelayed() bool { return C.SCIPpricerIsDelayed(p.raw) != 0 }
+func (p PricerPlugin) IsDelayed() bool { return C.SCIPpricerIsDelayed(p.raw) != 0 }
 
 // IsActive returns whether the pricer is active.
-func (p SCIPPricer) IsActive() bool { return C.SCIPpricerIsActive(p.raw) != 0 }
+func (p PricerPlugin) IsActive() bool { return C.SCIPpricerIsActive(p.raw) != 0 }

@@ -133,7 +133,7 @@ type subtourConshdlr struct {
 	graph *graph
 }
 
-func (c *subtourConshdlr) Check(_ scip.Model, _ scip.SCIPConshdlr, solution scip.Solution) bool {
+func (c *subtourConshdlr) Check(_ scip.Model, _ scip.ConshdlrPlugin, solution scip.Solution) bool {
 	var selected []edge
 	for i, v := range c.vars {
 		if solution.Val(v) > 0.5 {
@@ -143,7 +143,7 @@ func (c *subtourConshdlr) Check(_ scip.Model, _ scip.SCIPConshdlr, solution scip
 	return len(findSubtours(c.graph.n, selected)) == 1
 }
 
-func (c *subtourConshdlr) Enforce(model scip.Model, _ scip.SCIPConshdlr) scip.ConshdlrResult {
+func (c *subtourConshdlr) Enforce(model scip.Model, _ scip.ConshdlrPlugin) scip.ConshdlrResult {
 	var selected []edge
 	for i, v := range c.vars {
 		if model.CurrentVal(v) > 0.5 {

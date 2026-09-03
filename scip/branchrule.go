@@ -8,7 +8,7 @@ import "C"
 // BranchRule is the interface for defining custom branching rules.
 type BranchRule interface {
 	// Execute runs the branching rule on the given candidates and returns the result.
-	Execute(model Model, branchrule SCIPBranchRule, candidates []BranchingCandidate) BranchingResult
+	Execute(model Model, branchrule BranchRulePlugin, candidates []BranchingCandidate) BranchingResult
 }
 
 // BranchingResultKind describes the outcome of a branching rule execution.
@@ -68,27 +68,27 @@ type BranchingCandidate struct {
 	Frac float64
 }
 
-// SCIPBranchRule is a wrapper for the internal SCIP branch rule object.
-type SCIPBranchRule struct {
+// BranchRulePlugin is a wrapper for the internal SCIP branch rule object.
+type BranchRulePlugin struct {
 	raw *C.SCIP_BRANCHRULE
 }
 
 // Inner returns the internal raw pointer of the branch rule.
-func (b SCIPBranchRule) Inner() *C.SCIP_BRANCHRULE { return b.raw }
+func (b BranchRulePlugin) Inner() *C.SCIP_BRANCHRULE { return b.raw }
 
 // Name returns the name of the branch rule.
-func (b SCIPBranchRule) Name() string { return goString(C.SCIPbranchruleGetName(b.raw)) }
+func (b BranchRulePlugin) Name() string { return goString(C.SCIPbranchruleGetName(b.raw)) }
 
 // Desc returns the description of the branch rule.
-func (b SCIPBranchRule) Desc() string { return goString(C.SCIPbranchruleGetDesc(b.raw)) }
+func (b BranchRulePlugin) Desc() string { return goString(C.SCIPbranchruleGetDesc(b.raw)) }
 
 // Priority returns the priority of the branch rule.
-func (b SCIPBranchRule) Priority() int32 { return int32(C.SCIPbranchruleGetPriority(b.raw)) }
+func (b BranchRulePlugin) Priority() int32 { return int32(C.SCIPbranchruleGetPriority(b.raw)) }
 
 // MaxDepth returns the maxdepth of the branch rule.
-func (b SCIPBranchRule) MaxDepth() int32 { return int32(C.SCIPbranchruleGetMaxdepth(b.raw)) }
+func (b BranchRulePlugin) MaxDepth() int32 { return int32(C.SCIPbranchruleGetMaxdepth(b.raw)) }
 
 // MaxBoundDist returns the maxbounddist of the branch rule.
-func (b SCIPBranchRule) MaxBoundDist() float64 {
+func (b BranchRulePlugin) MaxBoundDist() float64 {
 	return float64(C.SCIPbranchruleGetMaxbounddist(b.raw))
 }

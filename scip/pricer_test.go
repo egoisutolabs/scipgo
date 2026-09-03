@@ -4,7 +4,7 @@ import "testing"
 
 type lyingPricer struct{}
 
-func (lyingPricer) GenerateColumns(Model, SCIPPricer, bool) PricerResult {
+func (lyingPricer) GenerateColumns(Model, PricerPlugin, bool) PricerResult {
 	return PricerResult{State: PricerResultStateFoundColumns}
 }
 
@@ -23,7 +23,7 @@ func TestNothingPricer(t *testing.T) {
 
 type earlyStoppingPricer struct{}
 
-func (earlyStoppingPricer) GenerateColumns(Model, SCIPPricer, bool) PricerResult {
+func (earlyStoppingPricer) GenerateColumns(Model, PricerPlugin, bool) PricerResult {
 	return PricerResult{State: PricerResultStateStopEarly}
 }
 
@@ -42,7 +42,7 @@ func TestEarlyStoppingPricer(t *testing.T) {
 
 type optimalPricer struct{}
 
-func (optimalPricer) GenerateColumns(Model, SCIPPricer, bool) PricerResult {
+func (optimalPricer) GenerateColumns(Model, PricerPlugin, bool) PricerResult {
 	return PricerResult{State: PricerResultStateNoColumns}
 }
 
@@ -62,7 +62,7 @@ type addSameColumnPricer struct {
 	t     *testing.T
 }
 
-func (p *addSameColumnPricer) GenerateColumns(model Model, _ SCIPPricer, _ bool) PricerResult {
+func (p *addSameColumnPricer) GenerateColumns(model Model, _ PricerPlugin, _ bool) PricerResult {
 	if p.added {
 		return PricerResult{State: PricerResultStateNoColumns}
 	}
@@ -94,7 +94,7 @@ func TestAddSameColumnPricer(t *testing.T) {
 
 type internalSCIPPricerTester struct{ t *testing.T }
 
-func (p internalSCIPPricerTester) GenerateColumns(_ Model, pricer SCIPPricer, _ bool) PricerResult {
+func (p internalSCIPPricerTester) GenerateColumns(_ Model, pricer PricerPlugin, _ bool) PricerResult {
 	if pricer.Name() != "internal" || pricer.Desc() != "internal pricer" {
 		p.t.Error("wrong pricer name/desc")
 	}

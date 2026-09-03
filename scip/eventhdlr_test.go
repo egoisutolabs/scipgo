@@ -14,7 +14,7 @@ func (h *countingEventHdlr) GetEventMask() EventMask {
 	return EventMaskLpEvent | EventMaskNodeEvent
 }
 
-func (h *countingEventHdlr) Execute(_ Model, _ SCIPEventhdlr, _ Event) {
+func (h *countingEventHdlr) Execute(_ Model, _ EventhdlrPlugin, _ Event) {
 	h.mu.Lock()
 	h.counter++
 	h.mu.Unlock()
@@ -40,7 +40,7 @@ func (internalSCIPEventHdlrTester) GetEventMask() EventMask {
 	return EventMaskLpEvent | EventMaskNodeEvent
 }
 
-func (h internalSCIPEventHdlrTester) Execute(_ Model, eventhdlr SCIPEventhdlr, event Event) {
+func (h internalSCIPEventHdlrTester) Execute(_ Model, eventhdlr EventhdlrPlugin, event Event) {
 	if !(EventMaskLpEvent | EventMaskNodeEvent).Matches(event.EventType()) {
 		h.t.Error("unexpected event type")
 	}

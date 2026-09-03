@@ -11,7 +11,7 @@ type firstChoosingBranchingRule struct {
 	failNow func()
 }
 
-func (r *firstChoosingBranchingRule) Execute(_ Model, branchrule SCIPBranchRule, candidates []BranchingCandidate) BranchingResult {
+func (r *firstChoosingBranchingRule) Execute(_ Model, branchrule BranchRulePlugin, candidates []BranchingCandidate) BranchingResult {
 	r.mu.Lock()
 	c := candidates[0]
 	r.chosen = &c
@@ -40,7 +40,7 @@ func TestChoosingFirstBranchingRule(t *testing.T) {
 
 type cuttingOffBranchingRule struct{}
 
-func (cuttingOffBranchingRule) Execute(Model, SCIPBranchRule, []BranchingCandidate) BranchingResult {
+func (cuttingOffBranchingRule) Execute(Model, BranchRulePlugin, []BranchingCandidate) BranchingResult {
 	return BranchingResult{Kind: BranchingResultCutOff}
 }
 
@@ -57,7 +57,7 @@ func TestCuttingOffBranchingRule(t *testing.T) {
 
 type firstBranchingRule struct{ t *testing.T }
 
-func (r firstBranchingRule) Execute(model Model, _ SCIPBranchRule, candidates []BranchingCandidate) BranchingResult {
+func (r firstBranchingRule) Execute(model Model, _ BranchRulePlugin, candidates []BranchingCandidate) BranchingResult {
 	if model.NVars() < len(candidates) {
 		r.t.Error("more branching candidates than variables")
 	}
@@ -81,7 +81,7 @@ func TestFirstBranchingRule(t *testing.T) {
 
 type customBranchingRule struct{ t *testing.T }
 
-func (r customBranchingRule) Execute(model Model, _ SCIPBranchRule, _ []BranchingCandidate) BranchingResult {
+func (r customBranchingRule) Execute(model Model, _ BranchRulePlugin, _ []BranchingCandidate) BranchingResult {
 	child1 := model.CreateChild()
 	child2 := model.CreateChild()
 
@@ -117,7 +117,7 @@ func TestCustomBranchingRule(t *testing.T) {
 
 type highestBoundBranchRule struct{ t *testing.T }
 
-func (r highestBoundBranchRule) Execute(model Model, _ SCIPBranchRule, candidates []BranchingCandidate) BranchingResult {
+func (r highestBoundBranchRule) Execute(model Model, _ BranchRulePlugin, candidates []BranchingCandidate) BranchingResult {
 	maxBound := NegInfinity
 	var maxCandidate *BranchingCandidate
 	for _, cand := range candidates {

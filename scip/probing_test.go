@@ -9,7 +9,7 @@ type probingTester struct{ t *testing.T }
 
 func (probingTester) GetEventMask() EventMask { return EventMaskNodeSolved }
 
-func (h probingTester) Execute(model Model, _ SCIPEventhdlr, _ Event) {
+func (h probingTester) Execute(model Model, _ EventhdlrPlugin, _ Event) {
 	prober := model.StartProbing()
 	if prober.IsObjChanged() {
 		h.t.Error("obj changed before any modification")
@@ -58,7 +58,7 @@ type probingAddRowTester struct {
 
 func (h probingAddRowTester) GetEventMask() EventMask { return EventMaskNodeSolved }
 
-func (h probingAddRowTester) Execute(model Model, _ SCIPEventhdlr, _ Event) {
+func (h probingAddRowTester) Execute(model Model, _ EventhdlrPlugin, _ Event) {
 	if h.checked.Load() {
 		return
 	}

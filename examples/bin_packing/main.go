@@ -87,7 +87,7 @@ func getDuals(itemConstraints []scip.Constraint, farkas bool) []float64 {
 	return duals
 }
 
-func (knapsackPricer) GenerateColumns(model scip.Model, _ scip.SCIPPricer, farkas bool) scip.PricerResult {
+func (knapsackPricer) GenerateColumns(model scip.Model, _ scip.PricerPlugin, farkas bool) scip.PricerResult {
 	items := scip.MustGetData[*itemToConstraint](model).cons
 	instance := scip.MustGetData[*binPackingInstance](model)
 
@@ -173,7 +173,7 @@ func solveKnapsack(sizes, profits []float64, capacity float64, decisions *branch
 // ryanFoster implements Ryan-Foster branching on fractional pairs of items.
 type ryanFoster struct{}
 
-func (ryanFoster) Execute(model scip.Model, _ scip.SCIPBranchRule, candidates []scip.BranchingCandidate) scip.BranchingResult {
+func (ryanFoster) Execute(model scip.Model, _ scip.BranchRulePlugin, candidates []scip.BranchingCandidate) scip.BranchingResult {
 	patterns := scip.MustGetData[*patternForVar](model).m
 	fractionalPair := findFractionalPair(model, patterns, candidates)
 

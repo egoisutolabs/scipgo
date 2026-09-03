@@ -19,7 +19,7 @@ type cspPricer struct {
 	itemSizes   []float64
 }
 
-func (p *cspPricer) GenerateColumns(model scip.Model, _ scip.SCIPPricer, farkas bool) scip.PricerResult {
+func (p *cspPricer) GenerateColumns(model scip.Model, _ scip.PricerPlugin, farkas bool) scip.PricerResult {
 	// Pricing has no idea what branching decisions were made by SCIP, so we
 	// only run the pricer at the root node.
 	if model.FocusNode().Depth() > 0 {

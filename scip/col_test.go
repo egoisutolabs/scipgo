@@ -17,7 +17,7 @@ type colTesterEventHandler struct {
 
 func (h colTesterEventHandler) GetEventMask() EventMask { return EventMaskFirstLpSolved }
 
-func (h colTesterEventHandler) Execute(model Model, _ SCIPEventhdlr, event Event) {
+func (h colTesterEventHandler) Execute(model Model, _ EventhdlrPlugin, event Event) {
 	if event.EventType() != EventMaskFirstLpSolved {
 		h.t.Error("unexpected event type")
 	}

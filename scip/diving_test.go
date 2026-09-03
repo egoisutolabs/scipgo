@@ -12,7 +12,7 @@ type divingTester struct {
 
 func (h divingTester) GetEventMask() EventMask { return EventMaskNodeSolved }
 
-func (h divingTester) Execute(model Model, _ SCIPEventhdlr, _ Event) {
+func (h divingTester) Execute(model Model, _ EventhdlrPlugin, _ Event) {
 	if h.checked.Load() {
 		return
 	}

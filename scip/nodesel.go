@@ -22,22 +22,22 @@ type NodeSel interface {
 	Comp(node1, node2 Node) int
 }
 
-// SCIPNodesel is a wrapper struct for the internal SCIP node selector.
-type SCIPNodesel struct {
+// NodeselPlugin is a wrapper struct for the internal SCIP node selector.
+type NodeselPlugin struct {
 	raw *C.SCIP_NODESEL
 }
 
 // Inner returns the internal raw pointer of the node selector.
-func (n SCIPNodesel) Inner() *C.SCIP_NODESEL { return n.raw }
+func (n NodeselPlugin) Inner() *C.SCIP_NODESEL { return n.raw }
 
 // Name returns the name of the node selector.
-func (n SCIPNodesel) Name() string { return goString(C.SCIPnodeselGetName(n.raw)) }
+func (n NodeselPlugin) Name() string { return goString(C.SCIPnodeselGetName(n.raw)) }
 
 // Desc returns the description of the node selector.
-func (n SCIPNodesel) Desc() string { return goString(C.SCIPnodeselGetDesc(n.raw)) }
+func (n NodeselPlugin) Desc() string { return goString(C.SCIPnodeselGetDesc(n.raw)) }
 
 // StdPriority returns the standard priority of the node selector.
-func (n SCIPNodesel) StdPriority() int32 { return int32(C.SCIPnodeselGetStdPriority(n.raw)) }
+func (n NodeselPlugin) StdPriority() int32 { return int32(C.SCIPnodeselGetStdPriority(n.raw)) }
 
 // MemSavePriority returns the memory saving priority of the node selector.
-func (n SCIPNodesel) MemSavePriority() int32 { return int32(C.SCIPnodeselGetMemsavePriority(n.raw)) }
+func (n NodeselPlugin) MemSavePriority() int32 { return int32(C.SCIPnodeselGetMemsavePriority(n.raw)) }

@@ -4,7 +4,7 @@ import "testing"
 
 type nodeDataBranchRule struct{ t *testing.T }
 
-func (r nodeDataBranchRule) Execute(model Model, _ SCIPBranchRule, candidates []BranchingCandidate) BranchingResult {
+func (r nodeDataBranchRule) Execute(model Model, _ BranchRulePlugin, candidates []BranchingCandidate) BranchingResult {
 	node := model.FocusNode()
 	if node.Number() == 1 {
 		if node.Depth() != 0 {
@@ -49,7 +49,7 @@ type focusNodeHandler struct{ t *testing.T }
 
 func (focusNodeHandler) GetEventMask() EventMask { return EventMaskNodeBranched }
 
-func (h focusNodeHandler) Execute(model Model, _ SCIPEventhdlr, _ Event) {
+func (h focusNodeHandler) Execute(model Model, _ EventhdlrPlugin, _ Event) {
 	currentNode := model.FocusNode()
 	if len(currentNode.Children()) == 0 {
 		h.t.Error("node has no children after branching")

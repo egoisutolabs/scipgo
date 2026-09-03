@@ -7,9 +7,9 @@ import (
 
 type allInfeasibleConshdlr struct{}
 
-func (allInfeasibleConshdlr) Check(Model, SCIPConshdlr, Solution) bool { return false }
+func (allInfeasibleConshdlr) Check(Model, ConshdlrPlugin, Solution) bool { return false }
 
-func (allInfeasibleConshdlr) Enforce(Model, SCIPConshdlr) ConshdlrResult {
+func (allInfeasibleConshdlr) Enforce(Model, ConshdlrPlugin) ConshdlrResult {
 	return ConshdlrResultCutOff
 }
 
@@ -24,23 +24,23 @@ func TestAllInfConshdlr(t *testing.T) {
 
 type countingConshdlr struct{ enfops, sepa, prop atomic.Int32 }
 
-func (*countingConshdlr) Check(Model, SCIPConshdlr, Solution) bool { return true }
+func (*countingConshdlr) Check(Model, ConshdlrPlugin, Solution) bool { return true }
 
-func (*countingConshdlr) Enforce(Model, SCIPConshdlr) ConshdlrResult {
+func (*countingConshdlr) Enforce(Model, ConshdlrPlugin) ConshdlrResult {
 	return ConshdlrResultFeasible
 }
 
-func (c *countingConshdlr) EnforcePseudo(_ Model, _ SCIPConshdlr, _, _ bool) ConshdlrResult {
+func (c *countingConshdlr) EnforcePseudo(_ Model, _ ConshdlrPlugin, _, _ bool) ConshdlrResult {
 	c.enfops.Add(1)
 	return ConshdlrResultFeasible
 }
 
-func (c *countingConshdlr) SeparateLP(Model, SCIPConshdlr) SeparationResult {
+func (c *countingConshdlr) SeparateLP(Model, ConshdlrPlugin) SeparationResult {
 	c.sepa.Add(1)
 	return SeparationResultDidNotFind
 }
 
-func (c *countingConshdlr) Propagate(Model, SCIPConshdlr) PropResult {
+func (c *countingConshdlr) Propagate(Model, ConshdlrPlugin) PropResult {
 	c.prop.Add(1)
 	return PropResultDidNotFind
 }

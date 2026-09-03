@@ -258,7 +258,7 @@ func GoBranchExecLp(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE, allowaddcons C.
 
 	cands := lpBranchingCands(scip)
 	model := solvingModel(scip)
-	br := SCIPBranchRule{raw: branchrule}
+	br := BranchRulePlugin{raw: branchrule}
 	res := rule.Execute(model, br, cands)
 
 	if res.Kind == BranchingResultBranchOn {
@@ -324,7 +324,7 @@ func GoEventhdlrExec(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR, event *C.SCIP_EV
 	}
 	s := weakScip(scip)
 	model := Model{scip: s}
-	sh := SCIPEventhdlr{raw: eventhdlr}
+	sh := EventhdlrPlugin{raw: eventhdlr}
 	ev := Event{raw: event, scip: s}
 	hdlr.Execute(model, sh, ev)
 	ret = C.SCIP_OKAY
@@ -402,7 +402,7 @@ func callPricer(scip *C.SCIP, pricer *C.SCIP_PRICER, lowerbound *C.double, stope
 	nVarsBefore := C.SCIPgetNVars(scip)
 
 	model := solvingModel(scip)
-	res := p.GenerateColumns(model, SCIPPricer{raw: pricer}, farkas)
+	res := p.GenerateColumns(model, PricerPlugin{raw: pricer}, farkas)
 
 	if !farkas {
 		if res.LowerBound != nil {
@@ -568,7 +568,7 @@ func GoSepaExecLp(scip *C.SCIP, sepa *C.SCIP_SEPA, result *C.SCIP_RESULT, allowl
 	}
 
 	model := solvingModel(scip)
-	sepRes := s.ExecuteLP(model, SCIPSeparator{raw: sepa})
+	sepRes := s.ExecuteLP(model, SeparatorPlugin{raw: sepa})
 	*result = separationResultToC(sepRes)
 	ret = C.SCIP_OKAY
 	return
@@ -626,7 +626,7 @@ func GoConsEnfops(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, 
 	if !ok {
 		return
 	}
-	*result = conshdlrResultToC(c.EnforcePseudo(solvingModel(scip), SCIPConshdlr{raw: conshdlr},
+	*result = conshdlrResultToC(c.EnforcePseudo(solvingModel(scip), ConshdlrPlugin{raw: conshdlr},
 		solinfeasible != 0, objinfeasible != 0))
 	ret = C.SCIP_OKAY
 	return
@@ -640,7 +640,7 @@ func GoConsSepalp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, 
 	if !ok {
 		return
 	}
-	*result = separationResultToC(c.SeparateLP(solvingModel(scip), SCIPConshdlr{raw: conshdlr}))
+	*result = separationResultToC(c.SeparateLP(solvingModel(scip), ConshdlrPlugin{raw: conshdlr}))
 	ret = C.SCIP_OKAY
 	return
 }
@@ -653,7 +653,7 @@ func GoConsProp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nc
 	if !ok {
 		return
 	}
-	*result = propResultToC(c.Propagate(solvingModel(scip), SCIPConshdlr{raw: conshdlr}))
+	*result = propResultToC(c.Propagate(solvingModel(scip), ConshdlrPlugin{raw: conshdlr}))
 	ret = C.SCIP_OKAY
 	return
 }
@@ -667,7 +667,7 @@ func GoConsEnfolp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, 
 		return
 	}
 	model := solvingModel(scip)
-	*result = conshdlrResultToC(c.Enforce(model, SCIPConshdlr{raw: conshdlr}))
+	*result = conshdlrResultToC(c.Enforce(model, ConshdlrPlugin{raw: conshdlr}))
 	ret = C.SCIP_OKAY
 	return
 }
@@ -684,7 +684,7 @@ func GoConsCheck(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, n
 	model := Model{scip: s}
 	solution := Solution{raw: sol, scip: s}
 
-	feasible := c.Check(model, SCIPConshdlr{raw: conshdlr}, solution)
+	feasible := c.Check(model, ConshdlrPlugin{raw: conshdlr}, solution)
 	if feasible {
 		*result = C.SCIP_FEASIBLE
 	} else {

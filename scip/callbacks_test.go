@@ -12,7 +12,7 @@ type copyCountingRule struct {
 
 func (r copyCountingRule) Copy() any { r.copies.Add(1); return r }
 
-func (r copyCountingRule) Execute(model Model, _ SCIPBranchRule, cands []BranchingCandidate) BranchingResult {
+func (r copyCountingRule) Execute(model Model, _ BranchRulePlugin, cands []BranchingCandidate) BranchingResult {
 	r.execs.Add(1)
 	if v, ok := GetData[int](model); ok && v == 42 {
 		r.sawData.Store(true)

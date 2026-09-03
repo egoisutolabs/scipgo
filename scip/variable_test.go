@@ -64,7 +64,7 @@ func TestVarSolVal(t *testing.T) {
 
 type redcostPricer struct{ t *testing.T }
 
-func (p redcostPricer) GenerateColumns(model Model, _ SCIPPricer, farkas bool) PricerResult {
+func (p redcostPricer) GenerateColumns(model Model, _ PricerPlugin, farkas bool) PricerResult {
 	if len(model.Vars()) > 3 {
 		return PricerResult{State: PricerResultStateNoColumns}
 	}

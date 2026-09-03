@@ -4,7 +4,7 @@ import "testing"
 
 type notRunningSeparator struct{}
 
-func (notRunningSeparator) ExecuteLP(Model, SCIPSeparator) SeparationResult {
+func (notRunningSeparator) ExecuteLP(Model, SeparatorPlugin) SeparationResult {
 	return SeparationResultDidNotRun
 }
 
@@ -24,7 +24,7 @@ func TestNotRunningSeparator(t *testing.T) {
 
 type consAddingSeparator struct{}
 
-func (consAddingSeparator) ExecuteLP(model Model, _ SCIPSeparator) SeparationResult {
+func (consAddingSeparator) ExecuteLP(model Model, _ SeparatorPlugin) SeparationResult {
 	vars := model.Vars()
 	coefs := make([]float64, len(vars))
 	for i := range coefs {
@@ -50,7 +50,7 @@ func TestConsAddingSeparator(t *testing.T) {
 
 type internalSeparatorDataTester struct{ t *testing.T }
 
-func (s internalSeparatorDataTester) ExecuteLP(model Model, sep SCIPSeparator) SeparationResult {
+func (s internalSeparatorDataTester) ExecuteLP(model Model, sep SeparatorPlugin) SeparationResult {
 	if sep.Name() != "InternalSeparatorDataTester" || sep.Desc() != "Internal separator data tester" {
 		s.t.Error("wrong separator name/desc")
 	}
@@ -99,7 +99,7 @@ func TestInternalScipSeparator(t *testing.T) {
 
 type cutsAddingSeparator struct{ t *testing.T }
 
-func (c cutsAddingSeparator) ExecuteLP(model Model, sep SCIPSeparator) SeparationResult {
+func (c cutsAddingSeparator) ExecuteLP(model Model, sep SeparatorPlugin) SeparationResult {
 	row := NewRow().
 		Name("test").
 		Eq(5).
