@@ -1,0 +1,14 @@
+scipgo
+Copyright (c) 2026 Egoisuto Labs (https://egoisuto.com)
+Licensed under the MIT License (see LICENSE).
+
+This product includes work derived from russcip
+(https://github.com/scipopt/russcip),
+Copyright Mohammed Ghannam and the russcip contributors,
+licensed under the Apache License, Version 2.0 (see LICENSE-russcip).
+Derived portions: the API design and structure of the scip package, the test
+suite and examples, and the instances under data/test.
+
+scipgo links against SCIP (https://www.scipopt.org), Copyright Zuse Institute
+Berlin, licensed under the Apache License, Version 2.0. SCIP is not
+distributed with this repository.

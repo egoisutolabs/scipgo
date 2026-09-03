@@ -1,0 +1,38 @@
+name: ci
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+env:
+  SCIP_VERSION: 10.0.2
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Install SCIP
+        run: |
+          wget -q https://github.com/scipopt/scip/releases/download/v${SCIP_VERSION}/scipoptsuite_${SCIP_VERSION}-1+jammy_amd64.deb
+          sudo apt-get update
+          sudo apt-get install -y ./scipoptsuite_${SCIP_VERSION}-1+jammy_amd64.deb
+      - run: gofmt -l . && test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test ./...
+      - name: Build examples
+        run: for d in examples/*/; do (cd "$d" && go build -o /dev/null .); done
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - run: brew install scip
+      - run: go test ./...

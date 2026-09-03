@@ -1,0 +1,132 @@
+package scip
+
+/*
+#include "helpers.h"
+*/
+import "C"
+
+// Conshdlr is the interface for implementing custom constraint handlers. A
+// handler may additionally implement ConshdlrEnfoPS, ConshdlrSepa,
+// ConshdlrProp and Copyable.
+type Conshdlr interface {
+	// Check reports whether the (primal) solution satisfies the constraint.
+	Check(model Model, conshdlr SCIPConshdlr, solution Solution) bool
+	// Enforce enforces the constraint for the current sub-problem's (LP)
+	// solution.
+	Enforce(model Model, conshdlr SCIPConshdlr) ConshdlrResult
+}
+
+// ConshdlrEnfoPS is optionally implemented by a Conshdlr to enforce pseudo
+// solutions, i.e. at nodes where no LP was solved. solInfeasible says an
+// earlier handler already found the solution infeasible; objInfeasible says
+// the pseudo solution's objective exceeds the cutoff bound, in which case
+// ConshdlrResultDidNotRun is allowed.
+type ConshdlrEnfoPS interface {
+	EnforcePseudo(model Model, conshdlr SCIPConshdlr, solInfeasible, objInfeasible bool) ConshdlrResult
+}
+
+// ConshdlrSepa is optionally implemented by a Conshdlr to separate the LP
+// solution of the current node.
+type ConshdlrSepa interface {
+	SeparateLP(model Model, conshdlr SCIPConshdlr) SeparationResult
+}
+
+// ConshdlrProp is optionally implemented by a Conshdlr to propagate variable
+// domains before the LP of each node is solved.
+type ConshdlrProp interface {
+	Propagate(model Model, conshdlr SCIPConshdlr) PropResult
+}
+
+// PropResult is the result of a propagation callback.
+type PropResult int
+
+// Propagation results.
+const (
+	PropResultDidNotRun  PropResult = iota // The propagator was skipped
+	PropResultDidNotFind                   // Searched, but found no reductions
+	PropResultReducedDom                   // The domain of a variable was reduced
+	PropResultCutOff                       // The node is infeasible and can be cut off
+	PropResultDelayed                      // Skipped, but should be called again
+)
+
+func propResultToC(r PropResult) C.SCIP_RESULT {
+	switch r {
+	case PropResultDidNotFind:
+		return C.SCIP_DIDNOTFIND
+	case PropResultReducedDom:
+		return C.SCIP_REDUCEDDOM
+	case PropResultCutOff:
+		return C.SCIP_CUTOFF
+	case PropResultDelayed:
+		return C.SCIP_DELAYED
+	default:
+		return C.SCIP_DIDNOTRUN
+	}
+}
+
+// ConshdlrResult is the result of enforcing a constraint handler.
+type ConshdlrResult int
+
+// Constraint handler results.
+const (
+	ConshdlrResultFeasible   ConshdlrResult = iota // The problem is feasible
+	ConshdlrResultCutOff                           // The problem is infeasible
+	ConshdlrResultConsAdded                        // Another constraint was added that resolves the infeasibility
+	ConshdlrResultReducedDom                       // The domain of a variable was reduced
+	ConshdlrResultSeparated                        // A cutting plane separated the LP solution
+	ConshdlrResultSolveLP                          // Request to resolve the LP
+	ConshdlrResultBranched                         // A branching was created
+	ConshdlrResultInfeasible                       // Infeasible, nothing resolved it; SCIP has to branch
+	ConshdlrResultDidNotRun                        // Skipped (EnforcePseudo only, when objInfeasible)
+)
+
+func conshdlrResultToC(r ConshdlrResult) C.SCIP_RESULT {
+	switch r {
+	case ConshdlrResultFeasible:
+		return C.SCIP_FEASIBLE
+	case ConshdlrResultCutOff:
+		return C.SCIP_CUTOFF
+	case ConshdlrResultConsAdded:
+		return C.SCIP_CONSADDED
+	case ConshdlrResultReducedDom:
+		return C.SCIP_REDUCEDDOM
+	case ConshdlrResultSeparated:
+		return C.SCIP_SEPARATED
+	case ConshdlrResultSolveLP:
+		return C.SCIP_SOLVELP
+	case ConshdlrResultBranched:
+		return C.SCIP_BRANCHED
+	case ConshdlrResultInfeasible:
+		return C.SCIP_INFEASIBLE
+	case ConshdlrResultDidNotRun:
+		return C.SCIP_DIDNOTRUN
+	default:
+		return C.SCIP_FEASIBLE
+	}
+}
+
+// SCIPConshdlr is a wrapper for the internal SCIP constraint handler.
+type SCIPConshdlr struct {
+	raw *C.SCIP_CONSHDLR
+}
+
+// Inner returns a raw pointer to the underlying SCIP_CONSHDLR.
+func (c SCIPConshdlr) Inner() *C.SCIP_CONSHDLR { return c.raw }
+
+// Name returns the name of the constraint handler.
+func (c SCIPConshdlr) Name() string { return goString(C.SCIPconshdlrGetName(c.raw)) }
+
+// Desc returns the description of the constraint handler.
+func (c SCIPConshdlr) Desc() string { return goString(C.SCIPconshdlrGetDesc(c.raw)) }
+
+// CreateEmptyRow creates an empty row for the constraint handler.
+func (c SCIPConshdlr) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
+	cn := cString(name)
+	defer freeCString(cn)
+	var row *C.SCIP_ROW
+	if err := retcodeError(C.SCIPcreateEmptyRowConshdlr(model.scip.raw, &row, c.raw, cn,
+		C.double(lhs), C.double(rhs), SCIPBool(local), SCIPBool(modifiable), SCIPBool(removable))); err != nil {
+		return Row{}, err
+	}
+	return Row{raw: row, scip: model.scip}, nil
+}
