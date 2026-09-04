@@ -32,6 +32,7 @@ func (p *Prober) active(op string, allowed stageSet) error {
 
 // varOp runs a probing call on a variable after the shared checks.
 func (p *Prober) varOp(op string, v Variable, call func() C.SCIP_RETCODE) error {
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	m := Model{scip: p.scip}
 	if err := p.active(op, stagesTransformed); err != nil {
 		return err

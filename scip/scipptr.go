@@ -95,27 +95,6 @@ func (s *Scip) gen(orig bool) uint64 {
 	return s.root().transGen
 }
 
-// problemIdentity captures what distinguishes one problem from its
-// replacement: stage, name, and the original variable array (a recreated
-// problem allocates a new one). Only meaningful in stages with a problem.
-type problemIdentity struct {
-	stage Stage
-	name  string
-	nVars int
-	vars  **C.SCIP_VAR
-}
-
-func (s *Scip) problemIdentity() problemIdentity {
-	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	id := problemIdentity{stage: s.stage()}
-	if stagesOrig.has(id.stage) {
-		id.name = goString(C.SCIPgetProbName(s.raw))
-		id.nVars = int(C.SCIPgetNOrigVars(s.raw))
-		id.vars = C.SCIPgetOrigVars(s.raw)
-	}
-	return id
-}
-
 // newProblem records that the problem was replaced: every handle is dead.
 func (s *Scip) newProblem() {
 	r := s.root()
@@ -334,7 +313,7 @@ func (s *Scip) createProb(name string) error {
 	defer freeCString(cn)
 	err := retcodeError(C.SCIPcreateProbBasic(s.raw, cn))
 	if err == nil {
-		s.newProblem()
+		err = retcodeError(C.scipgo_watchProblem(s.raw)) // told when this problem is freed
 	}
 	return err
 }
@@ -344,20 +323,19 @@ func (s *Scip) readProb(filename string) error {
 	cf := cString(filename)
 	defer freeCString(cf)
 	// A reader replaces the problem by calling SCIPcreateProb, possibly before
-	// failing; a read that fails earlier (no file, wrong stage) leaves it
-	// untouched. Detect replacement by comparing the problem's identity
-	// around the call so handles are invalidated only when it really changed.
-	before := s.problemIdentity()
+	// failing. The old problem's delorig hook fires inside that call, which
+	// is the authoritative signal that its handles are dead; a read that
+	// fails earlier (no file, wrong stage) never triggers it.
 	rc := C.SCIPreadProb(s.raw, cf, nil)
-	if rc == C.SCIP_OKAY || s.problemIdentity() != before {
-		s.newProblem()
-	}
 
 	// SCIPreadProb creates the problem (and its variables/constraints)
 	// before it can fail on, e.g., invalid data. Capture them here whenever
 	// the problem stage was reached, so that free() releases a balanced
 	// number of references (mirrors russcip issue #281).
 	if C.SCIPgetStage(s.raw) == C.SCIP_STAGE_PROBLEM {
+		if err := retcodeError(C.scipgo_watchProblem(s.raw)); err != nil && rc == C.SCIP_OKAY {
+			return err
+		}
 		nVars := C.SCIPgetNVars(s.raw)
 		vars := C.SCIPgetVars(s.raw)
 		for i := C.int(0); i < nVars; i++ {

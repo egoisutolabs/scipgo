@@ -57,14 +57,19 @@ func TestEveryNativeCallKeepsItsOwnerAlive(t *testing.T) {
 					break
 				}
 			}
-			if id == nil {
-				continue
+			if id == nil || livenessChecks[fn.Name.Name] || checkHelpers[fn.Name.Name] {
+				continue // the checks themselves; their callers pin the root
 			}
 			entersC, keeps := false, false
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				sel, ok := n.(*ast.SelectorExpr)
 				if !ok {
 					return true
+				}
+				// a liveness check resolves the weak owner; the call that follows
+				// must share that strong reference, so it counts as entering C
+				if livenessChecks[sel.Sel.Name] {
+					entersC = true
 				}
 				if x, ok := sel.X.(*ast.Ident); ok {
 					if x.Name == "C" && (strings.HasPrefix(sel.Sel.Name, "SCIP") || strings.HasPrefix(sel.Sel.Name, "scipgo")) {
@@ -91,6 +96,17 @@ func TestEveryNativeCallKeepsItsOwnerAlive(t *testing.T) {
 		}
 	}
 }
+
+// livenessChecks are the methods that resolve a weak owner into a temporary
+// strong reference; a function calling one and then touching the instance
+// must pin the root for its whole body.
+var livenessChecks = map[string]bool{"guard": true, "query": true, "checkHandle": true, "checkVars": true,
+	"checkCons": true, "checkNode": true, "live": true, "mustLive": true, "mustStage": true, "active": true,
+	"varOp": true, "rowOp": true, "varGet": true, "lpSolved": true, "alive": true, "stage": true}
+
+// checkHelpers build errors for the checks and are only reached through a
+// pinned caller.
+var checkHelpers = map[string]bool{"wrap": true, "invalid": true, "handleErr": true, "call": true}
 
 func isRootCall(c *ast.CallExpr) bool {
 	sel, ok := c.Fun.(*ast.SelectorExpr)

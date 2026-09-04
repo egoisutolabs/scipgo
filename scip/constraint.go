@@ -88,12 +88,14 @@ func (c Constraint) isLinearCons() bool {
 
 // IsModifiable returns the modifiable flag of the constraint.
 func (c Constraint) IsModifiable() bool {
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("Constraint.IsModifiable")
 	return c.scip.consIsModifiable(c)
 }
 
 // IsRemovable returns the removable flag of the constraint.
 func (c Constraint) IsRemovable() bool {
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("Constraint.IsRemovable")
 	return c.scip.consIsRemovable(c)
 }
@@ -101,12 +103,14 @@ func (c Constraint) IsRemovable() bool {
 // IsSeparated returns whether the constraint should be separated during LP
 // processing.
 func (c Constraint) IsSeparated() bool {
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("Constraint.IsSeparated")
 	return c.scip.consIsSeparated(c)
 }
 
 // Transformed returns the corresponding transformed constraint, if it exists.
 func (c Constraint) Transformed() (Constraint, bool) {
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("Constraint.Transformed")
 	ptr, err := c.scip.getTransformedCons(c)
 	if err != nil {

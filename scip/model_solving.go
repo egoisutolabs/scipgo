@@ -18,6 +18,7 @@ func (m Model) sol(op string, raw *C.SCIP_SOL, err error) (Solution, error) {
 
 // TryCreateSol creates a new solution initialized to zero.
 func (m Model) TryCreateSol() (Solution, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("CreateSol"); err != nil {
 		return Solution{}, err
 	}
@@ -34,6 +35,7 @@ func (m Model) CreateSol() Solution {
 
 // TryCreateOrigSol creates a new solution in the original space.
 func (m Model) TryCreateOrigSol() (Solution, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("CreateOrigSol"); err != nil {
 		return Solution{}, err
 	}
@@ -54,6 +56,7 @@ func (m Model) CreateOrigSol() Solution {
 // heuristic when the solution is added via AddSol. Useful as a MIP-start that
 // fixes only some variables and lets the solver complete the rest.
 func (m Model) TryCreatePartialSol() (Solution, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("CreatePartialSol"); err != nil {
 		return Solution{}, err
 	}
@@ -74,6 +77,7 @@ func (m Model) CreatePartialSol() Solution {
 // a *CallbackPanic if a constraint handler panicked while checking it, or an
 // *Error for a SCIP failure.
 func (m Model) AddSol(sol *Solution) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddSol"); err != nil {
 		return err
 	}
@@ -98,6 +102,7 @@ func (m Model) AddSol(sol *Solution) error {
 
 // TryBestSol returns the best solution, and whether one exists.
 func (m Model) TryBestSol() (Solution, bool, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.query("BestSol", stagesBestSol); err != nil {
 		return Solution{}, false, err
 	}
@@ -114,12 +119,14 @@ func (m Model) BestSol() (Solution, bool) {
 
 // NSols returns the number of solutions found by the optimization model.
 func (m Model) NSols() int {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.query("NSols", stagesTrans))
 	return m.scip.nSols()
 }
 
 // GetSols returns all solutions stored in the solution storage.
 func (m Model) GetSols() []Solution {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.query("GetSols", stagesTrans))
 	return scipSols(m.scip)
 }
@@ -129,6 +136,7 @@ func (m Model) GetSols() []Solution {
 // TryObjVal returns the objective value of the best solution found (the
 // primal bound); SCIP only permits this once the problem is transformed.
 func (m Model) TryObjVal() (float64, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.query("ObjVal", stagesTransformed); err != nil {
 		return 0, err
 	}
@@ -144,6 +152,7 @@ func (m Model) ObjVal() float64 {
 
 // TryBestBound returns the best bound (dual bound) proven so far.
 func (m Model) TryBestBound() (float64, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.query("BestBound", stagesTransformed); err != nil {
 		return 0, err
 	}
@@ -159,6 +168,7 @@ func (m Model) BestBound() float64 {
 
 // TryNNodes returns the number of nodes explored.
 func (m Model) TryNNodes() (int, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.query("NNodes", stagesOrig); err != nil {
 		return 0, err
 	}
@@ -174,6 +184,7 @@ func (m Model) NNodes() int {
 
 // TrySolvingTime returns the total solving time in seconds.
 func (m Model) TrySolvingTime() (float64, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.query("SolvingTime", stagesSolvingTime); err != nil {
 		return 0, err
 	}
@@ -189,12 +200,14 @@ func (m Model) SolvingTime() float64 {
 
 // NLpIterations returns the number of LP iterations performed.
 func (m Model) NLpIterations() int {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.query("NLpIterations", stagesLPIter))
 	return m.scip.nLPIterations()
 }
 
 // TryStatsJSON returns the solving statistics in JSON format.
 func (m Model) TryStatsJSON() (string, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("StatsJSON"); err != nil {
 		return "", err
 	}
@@ -211,6 +224,7 @@ func (m Model) StatsJSON() string {
 
 // WriteStatsJSON writes the solving statistics in JSON format to the given path.
 func (m Model) WriteStatsJSON(path string) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("WriteStatsJSON"); err != nil {
 		return err
 	}
@@ -221,6 +235,7 @@ func (m Model) WriteStatsJSON(path string) error {
 
 // TryFocusNode returns the node currently being processed.
 func (m Model) TryFocusNode() (Node, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.query("FocusNode", stagesFocus); err != nil {
 		return Node{}, err
 	}
@@ -241,6 +256,7 @@ func (m Model) FocusNode() Node {
 
 // TryCreateChild creates a new child of the focus node and returns it.
 func (m Model) TryCreateChild() (Node, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	// createChild reads SCIPgetLocalTransEstimate, which aborts outside solving.
 	if err := m.query("CreateChild", stagesSolving); err != nil {
 		return Node{}, err
@@ -271,6 +287,7 @@ func (m Model) wrapNode(ptr *C.SCIP_NODE) *Node {
 // panics with *Error, and outside the solving stage there is no tree, so the
 // answer is nil rather than an abort inside SCIP.
 func (m Model) treeNode(op string, get func() *C.SCIP_NODE) *Node {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.guard(op))
 	if !stagesSolving.has(m.scip.stage()) {
 		return nil
@@ -279,6 +296,7 @@ func (m Model) treeNode(op string, get func() *C.SCIP_NODE) *Node {
 }
 
 func (m Model) treeNodes(op string, allowed stageSet, get func() []*C.SCIP_NODE) []Node {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.guard(op))
 	if !allowed.has(m.scip.stage()) {
 		return nil
@@ -338,6 +356,7 @@ func (m Model) wrapNodes(ptrs []*C.SCIP_NODE) []Node {
 
 // NodeGetNAddedConss returns the number of added constraints to the given node.
 func (m Model) NodeGetNAddedConss(node *Node) int {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.guard("NodeGetNAddedConss"))
 	must(m.checkNode("NodeGetNAddedConss", node))
 	return m.scip.nodeGetNAddedConss(*node)
@@ -346,6 +365,7 @@ func (m Model) NodeGetNAddedConss(node *Node) int {
 // VarInProb gets the variable in the current problem given its index, if it
 // exists.
 func (m Model) VarInProb(varProbID int) (Variable, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.query("VarInProb", stagesTrans))
 	v := varFromID(m.scip.raw, varProbID)
 	if v == nil {
@@ -357,6 +377,7 @@ func (m Model) VarInProb(varProbID int) (Variable, bool) {
 // TryAddCut adds a new cut (row) to the LP. It reports whether the row is
 // infeasible from the local bounds.
 func (m Model) TryAddCut(cut Row, forceCut bool) (bool, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddCut"); err != nil {
 		return false, err
 	}
@@ -433,12 +454,14 @@ func (m Model) StartDiving() *Diver {
 
 // LpObjVal returns the objective value of the current LP relaxation.
 func (m Model) LpObjVal() float64 {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.query("LpObjVal", stagesSolving))
 	return m.scip.lpObjVal()
 }
 
 // LpStatus returns the status of the current LP solve.
 func (m Model) LpStatus() LPStatus {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.query("LpStatus", stagesSolving))
 	return m.scip.lpStatus()
 }

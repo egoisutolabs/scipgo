@@ -251,6 +251,19 @@ SCIP_RETCODE scipgo_includeConshdlr(SCIP* scip, const char* name, const char* de
     return SCIP_OKAY;
 }
 
+/* ------------------------------ problem hook ---------------------------- */
+
+static SCIP_DECL_PROBDELORIG(scipgo_probdelorig)
+{
+    (void)probdata;
+    return GoProbDelorig(scip);
+}
+
+SCIP_RETCODE scipgo_watchProblem(SCIP* scip)
+{
+    return SCIPsetProbDelorig(scip, scipgo_probdelorig);
+}
+
 /* -------------------------------- copying ------------------------------- */
 
 SCIP_RETCODE scipgo_copyPlugins(SCIP* source, SCIP* target, SCIP_Bool* valid)

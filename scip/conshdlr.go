@@ -137,6 +137,7 @@ func (c ConshdlrPlugin) Desc() string {
 
 // CreateEmptyRow creates an empty row for the constraint handler.
 func (c ConshdlrPlugin) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("ConshdlrPlugin.CreateEmptyRow")
 	return NewRow().Name(name).Bounds(lhs, rhs).Local(local).Modifiable(modifiable).Removable(removable).
 		Source(SourceConshdlr(c)).TryAddTo(model)

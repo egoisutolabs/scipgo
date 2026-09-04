@@ -215,6 +215,7 @@ func (r *Row) SetRank(rank int) {
 
 // SetCoeff sets the coefficient of a variable in the row.
 func (r *Row) SetCoeff(v Variable, coeff float64) {
+	defer runtime.KeepAlive(r.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	r.live("Row.SetCoeff")
 	must(r.TrySetCoeff(v, coeff))
 }

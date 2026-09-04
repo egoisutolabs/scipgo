@@ -9,6 +9,7 @@ import "runtime"
 
 // TryVars returns all variables of the (transformed, once it exists) problem.
 func (m Model) TryVars() ([]Variable, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.query("Vars", stagesTrans); err != nil {
 		return nil, err
 	}
@@ -25,18 +26,21 @@ func (m Model) Vars() []Variable {
 
 // OrigVars returns all original variables in the optimization model.
 func (m Model) OrigVars() []Variable {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.query("OrigVars", stagesOrig))
 	return scipVars(m.scip, true)
 }
 
 // Var returns the variable with the given ID, if it exists.
 func (m Model) Var(varID VarId) (Variable, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.query("Var", stagesTrans))
 	return varByID(m.scip, varID)
 }
 
 // TryNVars returns the number of variables.
 func (m Model) TryNVars() (int, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.query("NVars", stagesTrans); err != nil {
 		return 0, err
 	}
@@ -52,6 +56,7 @@ func (m Model) NVars() int {
 
 // TryNConss returns the number of constraints.
 func (m Model) TryNConss() (int, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.query("NConss", stagesConss); err != nil {
 		return 0, err
 	}
@@ -67,12 +72,14 @@ func (m Model) NConss() int {
 
 // FindCons finds a constraint by name.
 func (m Model) FindCons(name string) (Constraint, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.query("FindCons", stagesOrig))
 	return findConsOf(m.scip, name)
 }
 
 // TryConss returns all constraints.
 func (m Model) TryConss() ([]Constraint, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.query("Conss", stagesConss); err != nil {
 		return nil, err
 	}
@@ -88,6 +95,7 @@ func (m Model) Conss() []Constraint {
 
 // ConsIsModifiable returns the modifiable flag of the given constraint.
 func (m Model) ConsIsModifiable(c Constraint) bool {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.guard("ConsIsModifiable"))
 	must(m.checkCons("ConsIsModifiable", c))
 	return m.scip.consIsModifiable(c)
@@ -95,6 +103,7 @@ func (m Model) ConsIsModifiable(c Constraint) bool {
 
 // ConsIsRemovable returns the removable flag of the given constraint.
 func (m Model) ConsIsRemovable(c Constraint) bool {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.guard("ConsIsRemovable"))
 	must(m.checkCons("ConsIsRemovable", c))
 	return m.scip.consIsRemovable(c)
@@ -103,6 +112,7 @@ func (m Model) ConsIsRemovable(c Constraint) bool {
 // ConsIsSeparated returns whether the constraint should be separated during
 // LP processing.
 func (m Model) ConsIsSeparated(c Constraint) bool {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.guard("ConsIsSeparated"))
 	must(m.checkCons("ConsIsSeparated", c))
 	return m.scip.consIsSeparated(c)
@@ -114,6 +124,7 @@ func (m Model) ConsIsSeparated(c Constraint) bool {
 // "lp", "mps") and symb selects whether to use symbolic names given by the
 // user for variables and constraints.
 func (m Model) Write(path, ext string, symb bool) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("Write"); err != nil {
 		return err
 	}
@@ -155,6 +166,7 @@ func (m Model) AddVar(lb, ub, obj float64, name string, varType VarType) Variabl
 
 // TryAddPricedVar adds a new priced variable during pricing.
 func (m Model) TryAddPricedVar(lb, ub, obj float64, name string, varType VarType) (Variable, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddPricedVar"); err != nil {
 		return Variable{}, err
 	}
@@ -186,6 +198,7 @@ func (m Model) cons(op, name string, raw *C.SCIP_CONS, err error) (Constraint, e
 
 // TryAddCons adds a new linear constraint lhs <= sum(coefs*vars) <= rhs.
 func (m Model) TryAddCons(vars []Variable, coefs []float64, lhs, rhs float64, name string) (Constraint, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddCons"); err != nil {
 		return Constraint{}, err
 	}
@@ -220,6 +233,7 @@ func (m Model) AddConsLocal(cons ConsBuilder) Constraint {
 // TryAddConsNode locally adds a constraint (built with NewCons) to the given
 // node and its children.
 func (m Model) TryAddConsNode(node *Node, cons ConsBuilder) (Constraint, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddConsNode"); err != nil {
 		return Constraint{}, err
 	}
@@ -239,6 +253,7 @@ func (m Model) AddConsNode(node *Node, cons ConsBuilder) Constraint {
 }
 
 func (m Model) addLocalCons(op string, node *Node, cons ConsBuilder) (Constraint, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard(op); err != nil {
 		return Constraint{}, err
 	}
@@ -254,6 +269,7 @@ func (m Model) addLocalCons(op string, node *Node, cons ConsBuilder) (Constraint
 
 // TryAddConsCoef adds a coefficient to the given linear constraint.
 func (m Model) TryAddConsCoef(c Constraint, v Variable, coef float64) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddConsCoef"); err != nil {
 		return err
 	}
@@ -275,6 +291,7 @@ func (m Model) AddConsCoef(c Constraint, v Variable, coef float64) {
 // TryAddConsCoefSetppc adds a binary variable to the given set
 // partitioning/covering/packing constraint.
 func (m Model) TryAddConsCoefSetppc(c Constraint, v Variable) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddConsCoefSetppc"); err != nil {
 		return err
 	}
@@ -301,6 +318,7 @@ func (m Model) TryAddConsQuadratic(
 	quadVars1, quadVars2 []Variable, quadCoefs []float64,
 	lhs, rhs float64, name string,
 ) (Constraint, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddConsQuadratic"); err != nil {
 		return Constraint{}, err
 	}
@@ -329,6 +347,7 @@ func (m Model) AddConsQuadratic(
 // nonlinear expression tree. Use Infinity or NegInfinity for a one-sided
 // constraint.
 func (m Model) TryAddConsNonlinear(expr Expr, lhs, rhs float64, name string) (Constraint, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddConsNonlinear"); err != nil {
 		return Constraint{}, err
 	}
@@ -347,6 +366,7 @@ func (m Model) AddConsNonlinear(expr Expr, lhs, rhs float64, name string) Constr
 type consCreator func(vars []Variable, name string) (*C.SCIP_CONS, error)
 
 func (m Model) addConsSet(op string, vars []Variable, name string, create consCreator) (Constraint, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard(op); err != nil {
 		return Constraint{}, err
 	}
@@ -401,6 +421,7 @@ func (m Model) AddConsSetPack(vars []Variable, name string) Constraint {
 // TryAddConsCardinality adds a cardinality constraint allowing at most
 // cardinality non-zero variables.
 func (m Model) TryAddConsCardinality(vars []Variable, cardinality int, name string) (Constraint, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddConsCardinality"); err != nil {
 		return Constraint{}, err
 	}
@@ -421,6 +442,7 @@ func (m Model) AddConsCardinality(vars []Variable, cardinality int, name string)
 // TryAddConsIndicator adds an indicator constraint: binVar == 1 implies
 // sum(coefs*vars) <= rhs.
 func (m Model) TryAddConsIndicator(binVar Variable, vars []Variable, coefs []float64, rhs float64, name string) (Constraint, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddConsIndicator"); err != nil {
 		return Constraint{}, err
 	}
@@ -444,6 +466,7 @@ func (m Model) AddConsIndicator(binVar Variable, vars []Variable, coefs []float6
 // TryAddConsSOS1 adds an SOS1 constraint (at most one non-zero variable) with
 // optional weights.
 func (m Model) TryAddConsSOS1(vars []Variable, weights []float64, name string) (Constraint, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddConsSOS1"); err != nil {
 		return Constraint{}, err
 	}
@@ -463,6 +486,7 @@ func (m Model) AddConsSOS1(vars []Variable, weights []float64, name string) Cons
 
 // TrySetConsModifiable sets the constraint's modifiable flag.
 func (m Model) TrySetConsModifiable(c Constraint, modifiable bool) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetConsModifiable"); err != nil {
 		return err
 	}
@@ -479,6 +503,7 @@ func (m Model) SetConsModifiable(c Constraint, modifiable bool) {
 
 // TrySetConsRemovable sets the constraint's removable flag.
 func (m Model) TrySetConsRemovable(c Constraint, removable bool) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetConsRemovable"); err != nil {
 		return err
 	}
@@ -496,6 +521,7 @@ func (m Model) SetConsRemovable(c Constraint, removable bool) {
 // TrySetConsSeparated sets whether the constraint is separated during LP
 // processing.
 func (m Model) TrySetConsSeparated(c Constraint, separate bool) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetConsSeparated"); err != nil {
 		return err
 	}

@@ -56,6 +56,7 @@ func (s Solution) Val(v Variable) float64 {
 
 // SetVal sets the value of a variable in the solution.
 func (s Solution) SetVal(v Variable, val float64) {
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	s.live("Solution.SetVal")
 	must(s.TrySetVal(v, val))
 }

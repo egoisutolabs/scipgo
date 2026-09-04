@@ -30,6 +30,7 @@ func (d *Diver) active(op string, allowed stageSet) error {
 }
 
 func (d *Diver) varOp(op string, v Variable, call func() C.SCIP_RETCODE) error {
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	m := Model{scip: d.scip}
 	if err := d.active(op, stagesInDive); err != nil {
 		return err
@@ -41,6 +42,7 @@ func (d *Diver) varOp(op string, v Variable, call func() C.SCIP_RETCODE) error {
 }
 
 func (d *Diver) rowOp(op string, r Row, call func() C.SCIP_RETCODE) error {
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	m := Model{scip: d.scip}
 	if err := d.active(op, stagesInDive); err != nil {
 		return err
@@ -54,6 +56,7 @@ func (d *Diver) rowOp(op string, r Row, call func() C.SCIP_RETCODE) error {
 // varGet is the shared shape of the dive getters, which SCIP defines only
 // while solving.
 func (d *Diver) varGet(op string, v Variable) {
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(d.active(op, stagesSolving))
 	must(Model{scip: d.scip}.checkVars(op, v))
 }

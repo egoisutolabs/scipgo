@@ -234,6 +234,18 @@ func includeResult(id uintptr, rc C.SCIP_RETCODE) error {
 	return err
 }
 
+// GoProbDelorig is SCIP's authoritative signal that the original problem is
+// being freed (CreateProb or ReadProb replacing it, or SCIPfree): every
+// handle into it is dead from here on.
+//
+//export GoProbDelorig
+func GoProbDelorig(scip *C.SCIP) C.SCIP_RETCODE {
+	if s := instanceOf(rootScip(scip)); s != nil {
+		s.newProblem()
+	}
+	return C.SCIP_OKAY
+}
+
 // weakScip wraps a raw SCIP pointer without taking ownership, as needed
 // inside plugin callbacks.
 func weakScip(scip *C.SCIP) *Scip {

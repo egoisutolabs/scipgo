@@ -76,6 +76,7 @@ func (n Node) NChildren() int {
 
 // Children returns the children of the node.
 func (n Node) Children() []Node {
+	defer runtime.KeepAlive(n.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n.live("Node.Children")
 	c, err := n.TryChildren()
 	must(err)

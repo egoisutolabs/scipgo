@@ -54,7 +54,10 @@ func (s *Scip) stage() Stage {
 }
 
 // Stage returns the current SCIP stage of the model.
-func (m Model) Stage() Stage { return m.scip.stage() }
+func (m Model) Stage() Stage {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	return m.scip.stage()
+}
 
 // Error is returned by every Try* method when SCIP reports a failure, and is
 // the value the corresponding panicking method panics with.
