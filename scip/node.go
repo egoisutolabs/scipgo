@@ -59,8 +59,9 @@ func (n Node) Parent() (Node, bool) {
 // NChildren returns the number of children of the node.
 func (n Node) NChildren() int {
 	n.live("Node.NChildren")
-	// SCIPgetNChildren reports the focus node's children only.
-	if !stagesSolvingSolved.has(n.scip.stage()) || C.SCIPgetFocusNode(n.scip.raw) != n.raw {
+	// SCIPgetNChildren reports the focus node's children only, and there is
+	// a focus node only in stagesFocus (SCIPgetFocusNode is undefined elsewhere).
+	if !stagesFocus.has(n.scip.stage()) || C.SCIPgetFocusNode(n.scip.raw) != n.raw {
 		return 0
 	}
 	return int(C.SCIPgetNChildren(n.scip.raw))
@@ -82,10 +83,11 @@ func (n Node) TryChildren() ([]Node, error) {
 	if err := m.checkHandle("Node.Children", "Node", n.raw != nil, n.scip, n.gen, false); err != nil {
 		return nil, err
 	}
-	if !stagesSolvingSolved.has(n.scip.stage()) {
+	// SCIPgetChildren has no node argument: it lists the focus node's
+	// children, and a focus node exists only in stagesFocus.
+	if !stagesFocus.has(n.scip.stage()) {
 		return nil, nil
 	}
-	// SCIPgetChildren has no node argument: it lists the focus node's children.
 	if C.SCIPgetFocusNode(n.scip.raw) != n.raw {
 		return nil, m.invalid("Node.Children", RetcodeInvalidData, "children are only available for the focus node")
 	}

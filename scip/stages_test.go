@@ -2,8 +2,10 @@ package scip
 
 import (
 	"errors"
+	"runtime"
 	"sync/atomic"
 	"testing"
+	"weak"
 )
 
 // expectErrorPanic runs f and asserts it panics with an *Error whose Retcode
@@ -310,5 +312,67 @@ func TestChildrenOnlyForFocusNodeAndSolvingGetters(t *testing.T) {
 	m.Solve()
 	if probe.solVal.Load() == 0 || probe.nonFocus.Load() == 0 {
 		t.Fatalf("probe ran %d times, non-focus children rejected %d times", probe.solVal.Load(), probe.nonFocus.Load())
+	}
+}
+
+func TestModelsAreCollectable(t *testing.T) {
+	wp := func() weak.Pointer[Scip] {
+		m := createTestModel(t).Solve()
+		return weak.Make(m.scip)
+	}()
+	for i := 0; i < 5 && wp.Value() != nil; i++ {
+		runtime.GC()
+	}
+	if wp.Value() != nil {
+		t.Fatal("a dropped model must be collectable; a registry is holding it")
+	}
+}
+
+func TestSubSCIPHandlesRejectedByParent(t *testing.T) {
+	parent := createTestModel(t)
+	defer parent.Free()
+	other := createTestModel(t) // stands in for a sub-SCIP copy of parent
+	defer other.Free()
+	setCopyParent(other.scip.raw, parent.scip.raw)
+	defer forgetCopy(other.scip.raw)
+	worker := weakScip(other.scip.raw) // what a Copyable plugin's callback sees
+	if worker.owner != parent.scip {
+		t.Fatal("a sub-SCIP wrapper must resolve to the parent instance")
+	}
+	v := worker.newVar(other.Vars()[0].raw)
+	if v.Name() == "" {
+		t.Fatal("the worker handle is alive while the copy is")
+	}
+	if _, err := parent.TryAddCons([]Variable{v}, []float64{1}, 0, 1, "w"); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("a sub-SCIP handle must not enter the parent: %v", err)
+	}
+	forgetCopy(other.scip.raw) // SCIP freed the copy
+	expectErrorPanic(t, "handle after the copy is freed", RetcodeInvalidCall, func() { v.Name() })
+}
+
+type nodeKeeper struct{ n *Node }
+
+func (k *nodeKeeper) Execute(model Model, _ HeurTiming, _ bool) HeurResult {
+	if k.n == nil {
+		n := model.FocusNode()
+		k.n = &n
+	}
+	return HeurResultDidNotRun
+}
+
+func TestNodeChildrenAfterSolve(t *testing.T) {
+	k := &nodeKeeper{}
+	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
+	defer m.Free()
+	m.Add(NewHeur(k).Name("keeper"))
+	solved := m.Solve()
+	if k.n == nil || solved.Stage() != StageSolved {
+		t.Fatalf("keeper=%v stage=%v", k.n, solved.Stage())
+	}
+	if k.n.NChildren() != 0 { // no focus node in Solved: SCIPgetFocusNode must not be called
+		t.Fatal("children after solving")
+	}
+	if c, err := k.n.TryChildren(); c != nil || err != nil {
+		t.Fatalf("TryChildren after solving: %v %v", c, err)
 	}
 }

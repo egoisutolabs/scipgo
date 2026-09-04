@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+	"weak"
 )
 
 // Scip wraps a raw SCIP instance pointer, mirroring the Rust ScipPtr type.
@@ -33,16 +34,21 @@ type Scip struct {
 }
 
 // instances maps every live strong instance by its raw pointer, so weak
-// wrappers created inside callbacks can find the owner they belong to.
+// wrappers created inside callbacks can find the owner they belong to. The
+// values are weak pointers: a strong reference here would keep every model
+// reachable forever and its finalizer would never run.
 var instances = struct {
 	sync.Mutex
-	m map[*C.SCIP]*Scip
-}{m: make(map[*C.SCIP]*Scip)}
+	m map[*C.SCIP]weak.Pointer[Scip]
+}{m: make(map[*C.SCIP]weak.Pointer[Scip])}
 
 func instanceOf(raw *C.SCIP) *Scip {
 	instances.Lock()
 	defer instances.Unlock()
-	return instances.m[raw]
+	if wp, ok := instances.m[raw]; ok {
+		return wp.Value()
+	}
+	return nil
 }
 
 // root returns the strong instance behind s (itself, or a weak wrapper's owner).
@@ -80,7 +86,7 @@ func newScip() (*Scip, error) {
 	s := &Scip{raw: scipPtr}
 	forgetCopy(scipPtr) // the address may have belonged to a freed sub-SCIP
 	instances.Lock()
-	instances.m[scipPtr] = s
+	instances.m[scipPtr] = weak.Make(s)
 	instances.Unlock()
 	runtime.SetFinalizer(s, (*Scip).release)
 	return s, nil

@@ -113,6 +113,11 @@ func TestVarRedcost(t *testing.T) {
 	}
 
 	model.Solve()
+	// The node limit stops the solve in the solving stage (SCIP only moves to
+	// Solved when the problem is solved), so reduced costs are still defined.
+	if model.Stage() != StageSolving {
+		t.Fatalf("stage after node-limited solve: %v", model.Stage())
+	}
 	if _, ok := x.Redcost(); !ok {
 		t.Fatal("expected redcost after solving")
 	}

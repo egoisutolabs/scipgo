@@ -142,9 +142,12 @@ func joinDetail(a, b string) string {
 //     FreeTransform has since released (gen moved on)  -> InvalidCall
 //   - it belongs to a different model than m           -> InvalidData
 //
-// Ownership and liveness are judged by instance identity (Scip.root), not
-// by raw pointer, so handles minted inside callbacks with a weak wrapper are
-// accepted by their owner and die with it.
+// Liveness is judged by instance identity (Scip.root), so handles minted
+// inside callbacks with a weak wrapper die with their owner. Ownership is
+// judged by raw instance: a top-level callback handle shares its owner's
+// pointer and is accepted, while a handle from a sub-SCIP copy (a Copyable
+// plugin running in an LNS heuristic or a concurrent worker) has the same
+// root but a different instance and must not be passed to the parent.
 func handleErr(op, what string, raw bool, owner *Scip, gen uint64, orig bool, m *Scip) *Error {
 	switch {
 	case !raw:
@@ -153,7 +156,7 @@ func handleErr(op, what string, raw bool, owner *Scip, gen uint64, orig bool, m 
 		return &Error{Op: op, Stage: StageFree, Retcode: RetcodeInvalidCall, Detail: what + " belongs to a freed model"}
 	case !orig && gen != owner.gen():
 		return &Error{Op: op, Stage: owner.stage(), Retcode: RetcodeInvalidCall, Detail: what + " belongs to a transformed problem that was freed"}
-	case m != nil && owner.root() != m.root():
+	case m != nil && owner.raw != m.raw:
 		return &Error{Op: op, Stage: m.stage(), Retcode: RetcodeInvalidData, Detail: what + " belongs to another model"}
 	}
 	return nil
