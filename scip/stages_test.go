@@ -139,7 +139,7 @@ func TestHandleMethodsOnFreedOrZeroHandles(t *testing.T) {
 	expectErrorPanic(t, "Col{}", RetcodeInvalidData, func() { (Col{}).Index() })
 	expectErrorPanic(t, "Node{}", RetcodeInvalidData, func() { (Node{}).Number() })
 	expectErrorPanic(t, "Solution{}", RetcodeInvalidData, func() { (Solution{}).ObjVal() })
-	if x.safeName() != "<Variable of a freed model>" {
+	if x.safeName() != "<Variable belongs to a freed model>" {
 		t.Fatal("safeName on freed")
 	}
 }
@@ -376,3 +376,60 @@ func TestNodeChildrenAfterSolve(t *testing.T) {
 		t.Fatalf("TryChildren after solving: %v %v", c, err)
 	}
 }
+
+func TestCreateProbInvalidatesOriginalHandles(t *testing.T) {
+	m := createTestModel(t)
+	defer m.Free()
+	x := m.Vars()[0]
+	m.CreateProb("replacement")
+	expectErrorPanic(t, "original var after CreateProb", RetcodeInvalidCall, func() { x.Name() })
+	if _, err := m.TryAddCons([]Variable{x}, []float64{1}, 0, 1, "stale"); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("stale original handle as argument: %v", err)
+	}
+	if x.safeName() != "<Variable belongs to a problem that was freed>" {
+		t.Fatalf("safeName must not panic: %q", x.safeName())
+	}
+	if (Variable{}).safeName() != "<zero Variable>" {
+		t.Fatal("safeName on zero")
+	}
+	y := m.AddVar(0, 1, 1, "y", VarTypeBinary)
+	if y.Name() != "y" {
+		t.Fatal("handles of the new problem must work")
+	}
+}
+
+func TestBacktrackToCurrentDepthIsNoop(t *testing.T) {
+	// exercised through the prober only while solving, so drive it from a heuristic
+	var checked atomic.Bool
+	probe := heurFunc(func(model Model, _ HeurTiming, _ bool) HeurResult {
+		if checked.Load() {
+			return HeurResultDidNotRun
+		}
+		p, err := model.TryStartProbing()
+		if err != nil {
+			return HeurResultDidNotRun
+		}
+		defer p.End()
+		p.NewNode()
+		if err := p.TryBacktrack(p.Depth()); err != nil {
+			panic(err)
+		}
+		if err := p.TryBacktrack(p.Depth() + 1); !errors.Is(err, RetcodeInvalidData) {
+			panic("depth beyond current must be rejected")
+		}
+		checked.Store(true)
+		return HeurResultDidNotRun
+	})
+	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
+	defer m.Free()
+	m.Add(NewHeur(probe).Name("bt"))
+	m.Solve()
+	if !checked.Load() {
+		t.Fatal("probing never ran")
+	}
+}
+
+// heurFunc adapts a function to the Heuristic interface.
+type heurFunc func(Model, HeurTiming, bool) HeurResult
+
+func (f heurFunc) Execute(m Model, t HeurTiming, inf bool) HeurResult { return f(m, t, inf) }

@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "runtime"
+
 // Conshdlr is the interface for implementing custom constraint handlers. A
 // handler may additionally implement ConshdlrEnfoPS, ConshdlrSepa,
 // ConshdlrProp and Copyable.
@@ -113,7 +115,7 @@ type ConshdlrPlugin struct {
 
 // live panics with *Error unless the wrapper is usable; see handleErr.
 func (h ConshdlrPlugin) live(op string) {
-	mustLive(op, "ConshdlrPlugin", h.raw != nil, h.scip, 0, true)
+	mustLive(op, "ConshdlrPlugin", h.raw != nil, h.scip, genNone, true)
 }
 
 // Inner returns a raw pointer to the underlying SCIP_CONSHDLR.
@@ -121,12 +123,14 @@ func (c ConshdlrPlugin) Inner() *C.SCIP_CONSHDLR { return c.raw }
 
 // Name returns the name of the constraint handler.
 func (c ConshdlrPlugin) Name() string {
+	defer runtime.KeepAlive(c.scip) // the C call must outlive the last Go use of the wrapper
 	c.live("ConshdlrPlugin.Name")
 	return goString(C.SCIPconshdlrGetName(c.raw))
 }
 
 // Desc returns the description of the constraint handler.
 func (c ConshdlrPlugin) Desc() string {
+	defer runtime.KeepAlive(c.scip) // the C call must outlive the last Go use of the wrapper
 	c.live("ConshdlrPlugin.Desc")
 	return goString(C.SCIPconshdlrGetDesc(c.raw))
 }

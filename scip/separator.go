@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "runtime"
+
 // Separator is the interface for defining custom separation routines.
 type Separator interface {
 	// ExecuteLP executes the separation routine on LP solutions.
@@ -57,7 +59,7 @@ type SeparatorPlugin struct {
 
 // live panics with *Error unless the wrapper is usable; see handleErr.
 func (h SeparatorPlugin) live(op string) {
-	mustLive(op, "SeparatorPlugin", h.raw != nil, h.scip, 0, true)
+	mustLive(op, "SeparatorPlugin", h.raw != nil, h.scip, genNone, true)
 }
 
 // Inner returns the internal raw pointer of the separator.
@@ -65,42 +67,49 @@ func (s SeparatorPlugin) Inner() *C.SCIP_SEPA { return s.raw }
 
 // Name returns the name of the separator.
 func (s SeparatorPlugin) Name() string {
+	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
 	s.live("SeparatorPlugin.Name")
 	return goString(C.SCIPsepaGetName(s.raw))
 }
 
 // Desc returns the description of the separator.
 func (s SeparatorPlugin) Desc() string {
+	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
 	s.live("SeparatorPlugin.Desc")
 	return goString(C.SCIPsepaGetDesc(s.raw))
 }
 
 // Priority returns the priority of the separator.
 func (s SeparatorPlugin) Priority() int32 {
+	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
 	s.live("SeparatorPlugin.Priority")
 	return int32(C.SCIPsepaGetPriority(s.raw))
 }
 
 // Freq returns the frequency of the separator.
 func (s SeparatorPlugin) Freq() int32 {
+	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
 	s.live("SeparatorPlugin.Freq")
 	return int32(C.SCIPsepaGetFreq(s.raw))
 }
 
 // SetFreq sets the frequency of the separator.
 func (s SeparatorPlugin) SetFreq(freq int32) {
+	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
 	s.live("SeparatorPlugin.SetFreq")
 	C.SCIPsepaSetFreq(s.raw, C.int(freq))
 }
 
 // MaxBoundDist returns the maxbounddist of the separator.
 func (s SeparatorPlugin) MaxBoundDist() float64 {
+	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
 	s.live("SeparatorPlugin.MaxBoundDist")
 	return float64(C.SCIPsepaGetMaxbounddist(s.raw))
 }
 
 // IsDelayed returns whether the separator is delayed.
 func (s SeparatorPlugin) IsDelayed() bool {
+	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
 	s.live("SeparatorPlugin.IsDelayed")
 	return C.SCIPsepaIsDelayed(s.raw) != 0
 }

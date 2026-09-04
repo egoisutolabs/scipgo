@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "runtime"
+
 import "fmt"
 
 // Infinity is SCIP's notion of positive infinity.
@@ -296,6 +298,7 @@ func (m Model) FindHeur(name string) (HeurPlugin, bool) {
 
 // Heurs returns all primal heuristics included in the model.
 func (m Model) Heurs() []HeurPlugin {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	must(m.guard("Heurs"))
 	n := int(C.SCIPgetNHeurs(m.scip.raw))
 	arr := C.SCIPgetHeurs(m.scip.raw)
@@ -308,6 +311,7 @@ func (m Model) Heurs() []HeurPlugin {
 
 // Separators returns all separators included in the model.
 func (m Model) Separators() []SeparatorPlugin {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	must(m.guard("Separators"))
 	n := int(C.SCIPgetNSepas(m.scip.raw))
 	arr := C.SCIPgetSepas(m.scip.raw)
@@ -330,6 +334,7 @@ func (m Model) FindSeparator(name string) (SeparatorPlugin, bool) {
 
 // Presolvers returns all presolvers included in the model.
 func (m Model) Presolvers() []PresolverPlugin {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	must(m.guard("Presolvers"))
 	n := int(C.SCIPgetNPresols(m.scip.raw))
 	arr := C.SCIPgetPresols(m.scip.raw)
@@ -363,10 +368,11 @@ func (m Model) FindNodesel(name string) (NodeselPlugin, bool) {
 
 // TrySetHeurPriority sets the priority of a primal heuristic.
 func (m Model) TrySetHeurPriority(h HeurPlugin, priority int32) error {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	if err := m.guard("SetHeurPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetHeurPriority", "HeurPlugin", h.raw != nil, h.scip, 0, true); err != nil {
+	if err := m.checkHandle("SetHeurPriority", "HeurPlugin", h.raw != nil, h.scip, genNone, true); err != nil {
 		return err
 	}
 	return m.call("SetHeurPriority", C.SCIPsetHeurPriority(m.scip.raw, h.raw, C.int(priority)))
@@ -377,10 +383,11 @@ func (m Model) SetHeurPriority(h HeurPlugin, priority int32) { must(m.TrySetHeur
 
 // TrySetSepaPriority sets the priority of a separator.
 func (m Model) TrySetSepaPriority(s SeparatorPlugin, priority int32) error {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	if err := m.guard("SetSepaPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetSepaPriority", "SeparatorPlugin", s.raw != nil, s.scip, 0, true); err != nil {
+	if err := m.checkHandle("SetSepaPriority", "SeparatorPlugin", s.raw != nil, s.scip, genNone, true); err != nil {
 		return err
 	}
 	return m.call("SetSepaPriority", C.SCIPsetSepaPriority(m.scip.raw, s.raw, C.int(priority)))
@@ -393,10 +400,11 @@ func (m Model) SetSepaPriority(s SeparatorPlugin, priority int32) {
 
 // TrySetPresolPriority sets the priority of a presolver.
 func (m Model) TrySetPresolPriority(p PresolverPlugin, priority int32) error {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	if err := m.guard("SetPresolPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetPresolPriority", "PresolverPlugin", p.raw != nil, p.scip, 0, true); err != nil {
+	if err := m.checkHandle("SetPresolPriority", "PresolverPlugin", p.raw != nil, p.scip, genNone, true); err != nil {
 		return err
 	}
 	return m.call("SetPresolPriority", C.SCIPsetPresolPriority(m.scip.raw, p.raw, C.int(priority)))
@@ -827,36 +835,42 @@ func (m Model) SetHeuristics(heuristics ParamSetting) Model {
 
 // Eq checks equality using tolerance.
 func (m Model) Eq(a, b float64) bool {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	must(m.guard("Eq"))
 	return C.SCIPisEQ(m.scip.raw, C.double(a), C.double(b)) != 0
 }
 
 // Lt checks if a is less than b using tolerance.
 func (m Model) Lt(a, b float64) bool {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	must(m.guard("Lt"))
 	return C.SCIPisLT(m.scip.raw, C.double(a), C.double(b)) != 0
 }
 
 // Le checks if a is less than or equal to b using tolerance.
 func (m Model) Le(a, b float64) bool {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	must(m.guard("Le"))
 	return C.SCIPisLE(m.scip.raw, C.double(a), C.double(b)) != 0
 }
 
 // Gt checks if a is greater than b using tolerance.
 func (m Model) Gt(a, b float64) bool {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	must(m.guard("Gt"))
 	return C.SCIPisGT(m.scip.raw, C.double(a), C.double(b)) != 0
 }
 
 // Ge checks if a is greater than or equal to b using tolerance.
 func (m Model) Ge(a, b float64) bool {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	must(m.guard("Ge"))
 	return C.SCIPisGE(m.scip.raw, C.double(a), C.double(b)) != 0
 }
 
 // Eps returns SCIP's epsilon value.
 func (m Model) Eps() float64 {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	must(m.guard("Eps"))
 	return float64(C.SCIPepsilon(m.scip.raw))
 }

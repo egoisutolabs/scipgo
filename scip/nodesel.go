@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "runtime"
+
 // NodeSel is the interface for defining custom node selectors.
 //
 // A node selector decides which of the currently open (leaf) nodes of the
@@ -29,31 +31,37 @@ type NodeselPlugin struct {
 }
 
 // live panics with *Error unless the wrapper is usable; see handleErr.
-func (h NodeselPlugin) live(op string) { mustLive(op, "NodeselPlugin", h.raw != nil, h.scip, 0, true) }
+func (h NodeselPlugin) live(op string) {
+	mustLive(op, "NodeselPlugin", h.raw != nil, h.scip, genNone, true)
+}
 
 // Inner returns the internal raw pointer of the node selector.
 func (n NodeselPlugin) Inner() *C.SCIP_NODESEL { return n.raw }
 
 // Name returns the name of the node selector.
 func (n NodeselPlugin) Name() string {
+	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
 	n.live("NodeselPlugin.Name")
 	return goString(C.SCIPnodeselGetName(n.raw))
 }
 
 // Desc returns the description of the node selector.
 func (n NodeselPlugin) Desc() string {
+	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
 	n.live("NodeselPlugin.Desc")
 	return goString(C.SCIPnodeselGetDesc(n.raw))
 }
 
 // StdPriority returns the standard priority of the node selector.
 func (n NodeselPlugin) StdPriority() int32 {
+	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
 	n.live("NodeselPlugin.StdPriority")
 	return int32(C.SCIPnodeselGetStdPriority(n.raw))
 }
 
 // MemSavePriority returns the memory saving priority of the node selector.
 func (n NodeselPlugin) MemSavePriority() int32 {
+	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
 	n.live("NodeselPlugin.MemSavePriority")
 	return int32(C.SCIPnodeselGetMemsavePriority(n.raw))
 }

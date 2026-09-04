@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "runtime"
+
 // Eventhdlr is the interface used to define custom event handlers.
 type Eventhdlr interface {
 	// GetEventMask returns the type of the events the handler wants to catch.
@@ -93,7 +95,7 @@ type EventhdlrPlugin struct {
 
 // live panics with *Error unless the wrapper is usable; see handleErr.
 func (h EventhdlrPlugin) live(op string) {
-	mustLive(op, "EventhdlrPlugin", h.raw != nil, h.scip, 0, true)
+	mustLive(op, "EventhdlrPlugin", h.raw != nil, h.scip, genNone, true)
 }
 
 // Inner returns the internal raw pointer of the event handler.
@@ -101,6 +103,7 @@ func (h EventhdlrPlugin) Inner() *C.SCIP_EVENTHDLR { return h.raw }
 
 // Name returns the name of the event handler.
 func (h EventhdlrPlugin) Name() string {
+	defer runtime.KeepAlive(h.scip) // the C call must outlive the last Go use of the wrapper
 	h.live("EventhdlrPlugin.Name")
 	return goString(C.SCIPeventhdlrGetName(h.raw))
 }

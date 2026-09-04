@@ -434,9 +434,9 @@ func (b RowBuilder) TryAddTo(m Model) (Row, error) {
 		var err error
 		switch {
 		case src.separator != nil:
-			err = m.checkHandle("AddRow", "SeparatorPlugin", src.separator.raw != nil, src.separator.scip, 0, true)
+			err = m.checkHandle("AddRow", "SeparatorPlugin", src.separator.raw != nil, src.separator.scip, genNone, true)
 		case src.constraintHandler != nil:
-			err = m.checkHandle("AddRow", "ConshdlrPlugin", src.constraintHandler.raw != nil, src.constraintHandler.scip, 0, true)
+			err = m.checkHandle("AddRow", "ConshdlrPlugin", src.constraintHandler.raw != nil, src.constraintHandler.scip, genNone, true)
 		case src.constraint != nil:
 			err = m.checkCons("AddRow", *src.constraint)
 		}

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 )
 
 // Stage is a SCIP solving stage, as reported by Model.Stage and carried by
@@ -45,6 +46,7 @@ func (s Stage) String() string {
 
 // stage reads the instance's current stage; a freed instance reports StageFree.
 func (s *Scip) stage() Stage {
+	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
 	if !s.alive() {
 		return StageFree
 	}
@@ -138,8 +140,8 @@ func joinDetail(a, b string) string {
 // checkHandle) so both report the same Retcode:
 //   - the zero value a failed lookup returns          -> InvalidData
 //   - its model has been freed                        -> InvalidCall
-//   - it points into a transformed problem that
-//     FreeTransform has since released (gen moved on)  -> InvalidCall
+//   - its problem was released: FreeTransform for
+//     transformed objects, CreateProb/ReadProb for all -> InvalidCall
 //   - it belongs to a different model than m           -> InvalidData
 //
 // Liveness is judged by instance identity (Scip.root), so handles minted
@@ -148,14 +150,18 @@ func joinDetail(a, b string) string {
 // pointer and is accepted, while a handle from a sub-SCIP copy (a Copyable
 // plugin running in an LNS heuristic or a concurrent worker) has the same
 // root but a different instance and must not be passed to the parent.
+// genNone marks a wrapper that is bound to the instance, not to a problem
+// (the plugin wrappers): it survives CreateProb and FreeTransform.
+const genNone = ^uint64(0)
+
 func handleErr(op, what string, raw bool, owner *Scip, gen uint64, orig bool, m *Scip) *Error {
 	switch {
 	case !raw:
 		return &Error{Op: op, Stage: owner.stage(), Retcode: RetcodeInvalidData, Detail: "zero " + what}
 	case !owner.alive():
 		return &Error{Op: op, Stage: StageFree, Retcode: RetcodeInvalidCall, Detail: what + " belongs to a freed model"}
-	case !orig && gen != owner.gen():
-		return &Error{Op: op, Stage: owner.stage(), Retcode: RetcodeInvalidCall, Detail: what + " belongs to a transformed problem that was freed"}
+	case gen != genNone && gen != owner.gen(orig):
+		return &Error{Op: op, Stage: owner.stage(), Retcode: RetcodeInvalidCall, Detail: what + " belongs to a problem that was freed"}
 	case m != nil && owner.raw != m.raw:
 		return &Error{Op: op, Stage: m.stage(), Retcode: RetcodeInvalidData, Detail: what + " belongs to another model"}
 	}

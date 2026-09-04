@@ -480,7 +480,7 @@ func TestDanglingVariableNeverDereferenced(t *testing.T) {
 	a := createTestModel(t)
 	x := a.Vars()[0]
 	a.Free()
-	if got := x.Expr().Pow(2).String(); got != "<Variable of a freed model>^2" {
+	if got := x.Expr().Pow(2).String(); got != "<Variable belongs to a freed model>^2" {
 		t.Fatalf("String on dangling var: %q", got)
 	}
 	b := createTestModel(t)

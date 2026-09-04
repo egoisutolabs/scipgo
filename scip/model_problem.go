@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "runtime"
+
 // TryVars returns all variables of the (transformed, once it exists) problem.
 func (m Model) TryVars() ([]Variable, error) {
 	if err := m.query("Vars", stagesTrans); err != nil {
@@ -124,6 +126,7 @@ func (m Model) Write(path, ext string, symb bool) error {
 // name and type. During solving the transformed variable is returned,
 // mirroring russcip's Model<Solving>::add_var.
 func (m Model) TryAddVar(lb, ub, obj float64, name string, varType VarType) (Variable, error) {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	if err := m.guard("AddVar"); err != nil {
 		return Variable{}, err
 	}

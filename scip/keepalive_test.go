@@ -1,0 +1,70 @@
+package scip
+
+import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// TestEveryNativeCallKeepsItsOwnerAlive fails if a method that enters C
+// through a Scip or a handle lacks runtime.KeepAlive on the wrapper. The
+// instance registry holds only weak pointers, so without it the finalizer
+// may free the SCIP instance while the C call is still using it.
+func TestEveryNativeCallKeepsItsOwnerAlive(t *testing.T) {
+	receivers := map[string]bool{"Scip": true, "Model": true, "Variable": true, "Constraint": true, "Solution": true,
+		"Node": true, "Row": true, "Col": true, "Prober": true, "Diver": true, "BranchRulePlugin": true,
+		"ConshdlrPlugin": true, "EventhdlrPlugin": true, "HeurPlugin": true, "NodeselPlugin": true,
+		"PricerPlugin": true, "PresolverPlugin": true, "SeparatorPlugin": true}
+	files, _ := filepath.Glob("*.go")
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") || file == "callbacks.go" || file == "cgo.go" {
+			continue
+		}
+		src, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, file, src, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range f.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Body == nil || fn.Recv == nil || len(fn.Recv.List) == 0 {
+				continue
+			}
+			rt := fn.Recv.List[0].Type
+			if star, ok := rt.(*ast.StarExpr); ok {
+				rt = star.X
+			}
+			id, ok := rt.(*ast.Ident)
+			if !ok || !receivers[id.Name] {
+				continue
+			}
+			entersC, keeps := false, false
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				sel, ok := n.(*ast.SelectorExpr)
+				if !ok {
+					return true
+				}
+				if x, ok := sel.X.(*ast.Ident); ok {
+					if x.Name == "C" && (strings.HasPrefix(sel.Sel.Name, "SCIP") || strings.HasPrefix(sel.Sel.Name, "scipgo")) {
+						entersC = true
+					}
+					if x.Name == "runtime" && sel.Sel.Name == "KeepAlive" {
+						keeps = true
+					}
+				}
+				return true
+			})
+			if entersC && !keeps {
+				t.Errorf("%s: %s.%s enters C without runtime.KeepAlive on its wrapper", fset.Position(fn.Pos()), id.Name, fn.Name.Name)
+			}
+		}
+	}
+}
