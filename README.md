@@ -75,6 +75,28 @@ model.Add(scip.NewCons().Name("c").Eq(1).Coef(x, 1).Coef(y, 1))
 solved := model.Solve()
 ```
 
+## Errors
+
+Every operation comes in two forms. `Try*` returns an error and the plain
+name panics with the same value, so pick per call site:
+
+```go
+v, err := model.TryAddVar(0, 1, 1, "x", scip.VarTypeBinary)
+var e *scip.Error
+if errors.As(err, &e) {
+	log.Printf("%s failed in stage %s: %v", e.Op, e.Stage, e.Retcode)
+}
+if errors.Is(err, scip.RetcodeInvalidCall) { /* wrong stage */ }
+
+solved, err := model.TrySolve()
+var cp *scip.CallbackPanic
+if errors.As(err, &cp) { /* a plugin panicked: cp.Plugin, cp.Value */ }
+```
+
+`ReadProb`, `AddSol`, `Write` and the `Set*Param` family return errors under
+their plain names. A freed `Model` reports an error in `StageFree` rather
+than crashing.
+
 ## Nonlinear constraints
 
 Build an expression tree from variables and constants and add it as a

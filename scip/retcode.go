@@ -5,8 +5,6 @@ package scip
 */
 import "C"
 
-import "fmt"
-
 // Retcode represents the possible return codes from SCIP functions.
 type Retcode int
 
@@ -167,7 +165,7 @@ func retcodeToC(r Retcode) C.SCIP_RETCODE {
 // Rust scip_call_panic! macro.
 func mustOK(rc C.SCIP_RETCODE) {
 	if r := retcodeFromC(rc); r != RetcodeOkay {
-		panic(fmt.Sprintf("SCIP call failed with retcode %v", r))
+		panic(r)
 	}
 }
 

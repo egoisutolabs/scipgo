@@ -81,9 +81,13 @@ func (d *Diver) ChgCutoffBound(cutoff float64) {
 }
 
 // End ends diving mode. Must be called exactly once after StartDiving.
-func (d *Diver) End() {
+func (d *Diver) End() { must(d.TryEnd()) }
+
+// TryEnd ends diving mode, returning an error if SCIP is not diving.
+func (d *Diver) TryEnd() error {
+	m := Model{scip: d.scip}
 	if C.SCIPinDive(d.scip.raw) != 1 {
-		panic("SCIP is expected to be in diving mode before Diver.End is called.")
+		return m.invalid("Diver.End", RetcodeInvalidCall, "SCIP is not in diving mode")
 	}
-	C.SCIPendDive(d.scip.raw)
+	return m.call("Diver.End", C.SCIPendDive(d.scip.raw))
 }

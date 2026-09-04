@@ -23,11 +23,16 @@ func (p *Prober) Depth() int { return int(C.SCIPgetProbingDepth(p.scip.raw)) }
 
 // Backtrack undoes all changes applied in probing up to (and including) the
 // given probing depth.
-func (p *Prober) Backtrack(depth int) {
+func (p *Prober) Backtrack(depth int) { must(p.TryBacktrack(depth)) }
+
+// TryBacktrack undoes all probing changes above the given depth, which must be
+// below the current probing depth.
+func (p *Prober) TryBacktrack(depth int) error {
+	m := Model{scip: p.scip}
 	if depth >= p.Depth() {
-		panic("probing depth must be less than the current probing depth")
+		return m.invalid("Prober.Backtrack", RetcodeInvalidData, "depth must be below the current probing depth")
 	}
-	mustOK(C.SCIPbacktrackProbing(p.scip.raw, C.int(depth)))
+	return m.call("Prober.Backtrack", C.SCIPbacktrackProbing(p.scip.raw, C.int(depth)))
 }
 
 // ChgVarLb changes the lower bound of a variable in the current probing node.
@@ -139,11 +144,15 @@ func (p *Prober) AddRow(r Row) {
 }
 
 // End ends probing mode. Must be called exactly once after StartProbing.
-func (p *Prober) End() {
+func (p *Prober) End() { must(p.TryEnd()) }
+
+// TryEnd ends probing mode, returning an error if SCIP is not probing.
+func (p *Prober) TryEnd() error {
+	m := Model{scip: p.scip}
 	if C.SCIPinProbing(p.scip.raw) != 1 {
-		panic("SCIP is expected to be in probing mode before Prober.End is called.")
+		return m.invalid("Prober.End", RetcodeInvalidCall, "SCIP is not in probing mode")
 	}
-	C.SCIPendProbing(p.scip.raw)
+	return m.call("Prober.End", C.SCIPendProbing(p.scip.raw))
 }
 
 // InProbing reports whether SCIP is currently in probing mode.

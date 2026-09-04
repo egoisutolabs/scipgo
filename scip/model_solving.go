@@ -5,44 +5,82 @@ package scip
 */
 import "C"
 
-// CreateSol creates a new solution initialized to zero.
+// ------------------------------------------------------------- solutions
+
+func (m Model) sol(op string, raw *C.SCIP_SOL, err error) (Solution, error) {
+	if err != nil {
+		return Solution{}, m.wrap(op, err, "")
+	}
+	return Solution{raw: raw, scip: m.scip}, nil
+}
+
+// TryCreateSol creates a new solution initialized to zero.
+func (m Model) TryCreateSol() (Solution, error) {
+	if err := m.guard("CreateSol"); err != nil {
+		return Solution{}, err
+	}
+	raw, err := m.scip.createSol(false)
+	return m.sol("CreateSol", raw, err)
+}
+
+// CreateSol creates a new solution initialized to zero. It panics on failure.
 func (m Model) CreateSol() Solution {
-	solPtr, err := m.scip.createSol(false)
-	if err != nil {
-		panic("Failed to create solution")
-	}
-	return Solution{raw: solPtr, scip: m.scip}
+	s, err := m.TryCreateSol()
+	must(err)
+	return s
 }
 
-// CreateOrigSol creates a new solution in the original space.
+// TryCreateOrigSol creates a new solution in the original space.
+func (m Model) TryCreateOrigSol() (Solution, error) {
+	if err := m.guard("CreateOrigSol"); err != nil {
+		return Solution{}, err
+	}
+	raw, err := m.scip.createSol(true)
+	return m.sol("CreateOrigSol", raw, err)
+}
+
+// CreateOrigSol creates a new solution in the original space. It panics on
+// failure.
 func (m Model) CreateOrigSol() Solution {
-	solPtr, err := m.scip.createSol(true)
-	if err != nil {
-		panic("Failed to create solution in original space")
-	}
-	return Solution{raw: solPtr, scip: m.scip}
+	s, err := m.TryCreateOrigSol()
+	must(err)
+	return s
 }
 
-// CreatePartialSol creates a new partial solution: variables left unset are
-// UNKNOWN rather than zero, and are filled in by the completesol heuristic
-// when the solution is added via AddSol. Useful as a MIP-start that fixes
-// only some variables and lets the solver complete the rest.
-func (m Model) CreatePartialSol() Solution {
-	solPtr, err := m.scip.createPartialSol()
-	if err != nil {
-		panic("Failed to create partial solution in state ProblemCreated")
+// TryCreatePartialSol creates a new partial solution: variables left unset
+// are UNKNOWN rather than zero, and are filled in by the completesol
+// heuristic when the solution is added via AddSol. Useful as a MIP-start that
+// fixes only some variables and lets the solver complete the rest.
+func (m Model) TryCreatePartialSol() (Solution, error) {
+	if err := m.guard("CreatePartialSol"); err != nil {
+		return Solution{}, err
 	}
-	return Solution{raw: solPtr, scip: m.scip}
+	raw, err := m.scip.createPartialSol()
+	return m.sol("CreatePartialSol", raw, err)
+}
+
+// CreatePartialSol creates a new partial solution; see TryCreatePartialSol.
+// It panics on failure.
+func (m Model) CreatePartialSol() Solution {
+	s, err := m.TryCreatePartialSol()
+	must(err)
+	return s
 }
 
 // AddSol adds a solution to the model, consuming it: sol is invalid
-// afterwards. Returns an error if the solution was not stored (e.g. it is
-// infeasible).
+// afterwards. It returns SolErrorInfeasible if the solution was not stored,
+// a *CallbackPanic if a constraint handler panicked while checking it, or an
+// *Error for a SCIP failure.
 func (m Model) AddSol(sol *Solution) error {
-	stored, err := m.scip.addSol(sol)
-	rethrowPanics(m.scip.raw)
-	if err != nil {
+	if err := m.guard("AddSol"); err != nil {
 		return err
+	}
+	stored, err := m.scip.addSol(sol)
+	if cp := callbackError(m.scip.raw); cp != nil {
+		return cp
+	}
+	if err != nil {
+		return m.wrap("AddSol", err, "")
 	}
 	if !stored {
 		return SolErrorInfeasible
@@ -59,6 +97,8 @@ func (m Model) NSols() int { return m.scip.nSols() }
 // GetSols returns all solutions stored in the solution storage.
 func (m Model) GetSols() []Solution { return scipSols(m.scip) }
 
+// ------------------------------------------------------------- statistics
+
 // ObjVal returns the objective value of the best solution found.
 func (m Model) ObjVal() float64 { return m.scip.objVal() }
 
@@ -74,34 +114,69 @@ func (m Model) SolvingTime() float64 { return m.scip.solvingTime() }
 // NLpIterations returns the number of LP iterations performed.
 func (m Model) NLpIterations() int { return m.scip.nLPIterations() }
 
-// StatsJSON returns the solving statistics in JSON format.
-func (m Model) StatsJSON() string {
-	j, err := m.scip.statisticsJSON()
-	if err != nil {
-		panic("Failed to get statistics in JSON format")
+// TryStatsJSON returns the solving statistics in JSON format.
+func (m Model) TryStatsJSON() (string, error) {
+	if err := m.guard("StatsJSON"); err != nil {
+		return "", err
 	}
+	j, err := m.scip.statisticsJSON()
+	return j, m.wrap("StatsJSON", err, "")
+}
+
+// StatsJSON returns the solving statistics in JSON format. It panics on failure.
+func (m Model) StatsJSON() string {
+	j, err := m.TryStatsJSON()
+	must(err)
 	return j
 }
 
 // WriteStatsJSON writes the solving statistics in JSON format to the given path.
-func (m Model) WriteStatsJSON(path string) error { return m.scip.writeStatisticsJSON(path) }
-
-// FocusNode returns the current node of the model.
-func (m Model) FocusNode() Node {
-	scipNode := m.scip.focusNode()
-	if scipNode == nil {
-		panic("Failed to get focus node")
+func (m Model) WriteStatsJSON(path string) error {
+	if err := m.guard("WriteStatsJSON"); err != nil {
+		return err
 	}
-	return Node{raw: scipNode, scip: m.scip}
+	return m.wrap("WriteStatsJSON", m.scip.writeStatisticsJSON(path), path)
 }
 
-// CreateChild creates a new child node of the current node and returns it.
-func (m Model) CreateChild() Node {
-	nodePtr, err := m.scip.createChild()
-	if err != nil {
-		panic("Failed to create child node in state Solving")
+// ------------------------------------------------------------- tree
+
+// TryFocusNode returns the node currently being processed.
+func (m Model) TryFocusNode() (Node, error) {
+	if err := m.guard("FocusNode"); err != nil {
+		return Node{}, err
 	}
-	return Node{raw: nodePtr, scip: m.scip}
+	raw := m.scip.focusNode()
+	if raw == nil {
+		return Node{}, m.invalid("FocusNode", RetcodeInvalidCall, "no focus node; not solving")
+	}
+	return Node{raw: raw, scip: m.scip}, nil
+}
+
+// FocusNode returns the node currently being processed. It panics if there
+// is none.
+func (m Model) FocusNode() Node {
+	n, err := m.TryFocusNode()
+	must(err)
+	return n
+}
+
+// TryCreateChild creates a new child of the focus node and returns it.
+func (m Model) TryCreateChild() (Node, error) {
+	if err := m.guard("CreateChild"); err != nil {
+		return Node{}, err
+	}
+	raw, err := m.scip.createChild()
+	if err != nil {
+		return Node{}, m.wrap("CreateChild", err, "")
+	}
+	return Node{raw: raw, scip: m.scip}, nil
+}
+
+// CreateChild creates a new child of the focus node. It panics on failure.
+func (m Model) CreateChild() Node {
+	n, err := m.TryCreateChild()
+	must(err)
+	return n
 }
 
 func (m Model) wrapNode(ptr *C.SCIP_NODE) *Node {
@@ -170,13 +245,20 @@ func (m Model) VarInProb(varProbID int) (Variable, bool) {
 	return Variable{raw: v, scip: m.scip}, true
 }
 
-// AddCut adds a new cut (row) to the model. Returns whether the row is
+// TryAddCut adds a new cut (row) to the LP. It reports whether the row is
 // infeasible from the local bounds.
-func (m Model) AddCut(cut Row, forceCut bool) bool {
-	infeasible, err := m.scip.addRow(cut, forceCut)
-	if err != nil {
-		panic("Failed to add row in state Solving")
+func (m Model) TryAddCut(cut Row, forceCut bool) (bool, error) {
+	if err := m.guard("AddCut"); err != nil {
+		return false, err
 	}
+	infeasible, err := m.scip.addRow(cut, forceCut)
+	return infeasible, m.wrap("AddCut", err, cut.Name())
+}
+
+// AddCut adds a new cut to the LP; see TryAddCut. It panics on failure.
+func (m Model) AddCut(cut Row, forceCut bool) bool {
+	infeasible, err := m.TryAddCut(cut, forceCut)
+	must(err)
 	return infeasible
 }
 
@@ -185,24 +267,50 @@ func (m Model) CurrentVal(v Variable) float64 {
 	return float64(C.SCIPgetSolVal(m.scip.raw, nil, v.raw))
 }
 
-// StartProbing starts probing at the current node. The returned Prober must
-// be ended with a call to its End method.
-func (m Model) StartProbing() *Prober {
-	mustOK(C.SCIPstartProbing(m.scip.raw))
-	return &Prober{scip: m.scip}
+// TryStartProbing starts probing at the current node. The returned Prober
+// must be ended with End.
+func (m Model) TryStartProbing() (*Prober, error) {
+	if err := m.guard("StartProbing"); err != nil {
+		return nil, err
+	}
+	if err := m.call("StartProbing", C.SCIPstartProbing(m.scip.raw)); err != nil {
+		return nil, err
+	}
+	return &Prober{scip: m.scip}, nil
 }
 
-// StartDiving starts diving at the current node. The returned Diver must be
-// ended with a call to its End method.
-func (m Model) StartDiving() *Diver {
+// StartProbing starts probing at the current node. It panics on failure.
+func (m Model) StartProbing() *Prober {
+	p, err := m.TryStartProbing()
+	must(err)
+	return p
+}
+
+// TryStartDiving starts diving at the current node. The returned Diver must
+// be ended with End.
+func (m Model) TryStartDiving() (*Diver, error) {
+	if err := m.guard("StartDiving"); err != nil {
+		return nil, err
+	}
 	// Since SCIP 10, SCIPstartDive requires the current node's LP to be
 	// constructed first; construct it on demand.
 	if C.SCIPisLPConstructed(m.scip.raw) == 0 {
 		var cutoff C.uint
-		mustOK(C.SCIPconstructLP(m.scip.raw, &cutoff))
+		if err := m.call("StartDiving", C.SCIPconstructLP(m.scip.raw, &cutoff)); err != nil {
+			return nil, err
+		}
 	}
-	mustOK(C.SCIPstartDive(m.scip.raw))
-	return &Diver{scip: m.scip}
+	if err := m.call("StartDiving", C.SCIPstartDive(m.scip.raw)); err != nil {
+		return nil, err
+	}
+	return &Diver{scip: m.scip}, nil
+}
+
+// StartDiving starts diving at the current node. It panics on failure.
+func (m Model) StartDiving() *Diver {
+	d, err := m.TryStartDiving()
+	must(err)
+	return d
 }
 
 // LpObjVal returns the objective value of the current LP relaxation.
@@ -211,15 +319,29 @@ func (m Model) LpObjVal() float64 { return m.scip.lpObjVal() }
 // LpStatus returns the status of the current LP solve.
 func (m Model) LpStatus() LPStatus { return m.scip.lpStatus() }
 
-// SetUbNode changes the upper bound of the variable in a given node.
-func (m Model) SetUbNode(node *Node, v Variable, ub float64) {
-	mustOK(C.SCIPchgVarUbNode(m.scip.raw, node.raw, v.raw, C.double(ub)))
+// TrySetUbNode changes the upper bound of the variable in a given node.
+func (m Model) TrySetUbNode(node *Node, v Variable, ub float64) error {
+	if err := m.guard("SetUbNode"); err != nil {
+		return err
+	}
+	return m.call("SetUbNode", C.SCIPchgVarUbNode(m.scip.raw, node.raw, v.raw, C.double(ub)))
 }
 
-// SetLbNode changes the lower bound of the variable in a given node.
-func (m Model) SetLbNode(node *Node, v Variable, lb float64) {
-	mustOK(C.SCIPchgVarLbNode(m.scip.raw, node.raw, v.raw, C.double(lb)))
+// SetUbNode changes the upper bound of the variable in a given node. It
+// panics on failure.
+func (m Model) SetUbNode(node *Node, v Variable, ub float64) { must(m.TrySetUbNode(node, v, ub)) }
+
+// TrySetLbNode changes the lower bound of the variable in a given node.
+func (m Model) TrySetLbNode(node *Node, v Variable, lb float64) error {
+	if err := m.guard("SetLbNode"); err != nil {
+		return err
+	}
+	return m.call("SetLbNode", C.SCIPchgVarLbNode(m.scip.raw, node.raw, v.raw, C.double(lb)))
 }
+
+// SetLbNode changes the lower bound of the variable in a given node. It
+// panics on failure.
+func (m Model) SetLbNode(node *Node, v Variable, lb float64) { must(m.TrySetLbNode(node, v, lb)) }
 
 func scipSols(s *Scip) []Solution {
 	raw := s.getSols()

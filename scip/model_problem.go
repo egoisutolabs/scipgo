@@ -5,8 +5,6 @@ package scip
 */
 import "C"
 
-import "fmt"
-
 // Vars returns all variables in the optimization model.
 func (m Model) Vars() []Variable { return scipVars(m.scip, false) }
 
@@ -44,201 +42,345 @@ func (m Model) ConsIsSeparated(c Constraint) bool { return m.scip.consIsSeparate
 // "lp", "mps") and symb selects whether to use symbolic names given by the
 // user for variables and constraints.
 func (m Model) Write(path, ext string, symb bool) error {
-	return m.scip.write(path, ext, symb)
+	if err := m.guard("Write"); err != nil {
+		return err
+	}
+	return m.wrap("Write", m.scip.write(path, ext, symb), path)
 }
 
-// AddVar adds a new variable to the model with the given bounds, objective
-// coefficient, name, and type. During solving, the transformed variable is
-// returned (mirroring russcip's Model<Solving>::add_var).
-func (m Model) AddVar(lb, ub, obj float64, name string, varType VarType) Variable {
+// ------------------------------------------------------------- variables
+
+// TryAddVar adds a new variable with the given bounds, objective coefficient,
+// name and type. During solving the transformed variable is returned,
+// mirroring russcip's Model<Solving>::add_var.
+func (m Model) TryAddVar(lb, ub, obj float64, name string, varType VarType) (Variable, error) {
+	if err := m.guard("AddVar"); err != nil {
+		return Variable{}, err
+	}
 	var varPtr *C.SCIP_VAR
 	var err error
-	if C.SCIPgetStage(m.scip.raw) == C.SCIP_STAGE_SOLVING {
+	if m.scip.stage() == StageSolving {
 		varPtr, err = m.scip.createVarSolving(lb, ub, obj, name, varType)
-		if err != nil {
-			panic("Failed to create variable in state Solving")
-		}
 	} else {
 		varPtr, err = m.scip.createVar(lb, ub, obj, name, varType)
-		if err != nil {
-			panic("Failed to create variable in state ProblemCreated")
-		}
 	}
-	return Variable{raw: varPtr, scip: m.scip}
+	if err != nil {
+		return Variable{}, m.wrap("AddVar", err, name)
+	}
+	return Variable{raw: varPtr, scip: m.scip}, nil
 }
 
-// AddPricedVar adds a new priced variable to the SCIP data structure.
-func (m Model) AddPricedVar(lb, ub, obj float64, name string, varType VarType) Variable {
+// AddVar adds a new variable; see TryAddVar. It panics on failure.
+func (m Model) AddVar(lb, ub, obj float64, name string, varType VarType) Variable {
+	v, err := m.TryAddVar(lb, ub, obj, name, varType)
+	must(err)
+	return v
+}
+
+// TryAddPricedVar adds a new priced variable during pricing.
+func (m Model) TryAddPricedVar(lb, ub, obj float64, name string, varType VarType) (Variable, error) {
+	if err := m.guard("AddPricedVar"); err != nil {
+		return Variable{}, err
+	}
 	varPtr, err := m.scip.createPricedVar(lb, ub, obj, name, varType)
 	if err != nil {
-		panic("Failed to create variable in state Solving")
+		return Variable{}, m.wrap("AddPricedVar", err, name)
 	}
-	return Variable{raw: varPtr, scip: m.scip}
+	return Variable{raw: varPtr, scip: m.scip}, nil
 }
 
-// AddCons adds a new linear constraint to the model with the given variables,
-// coefficients, sides, and name.
+// AddPricedVar adds a new priced variable during pricing. It panics on failure.
+func (m Model) AddPricedVar(lb, ub, obj float64, name string, varType VarType) Variable {
+	v, err := m.TryAddPricedVar(lb, ub, obj, name, varType)
+	must(err)
+	return v
+}
+
+// ------------------------------------------------------------- constraints
+
+func (m Model) cons(op, name string, raw *C.SCIP_CONS, err error) (Constraint, error) {
+	if err != nil {
+		return Constraint{}, m.wrap(op, err, name)
+	}
+	return Constraint{raw: raw, scip: m.scip}, nil
+}
+
+// TryAddCons adds a new linear constraint lhs <= sum(coefs*vars) <= rhs.
+func (m Model) TryAddCons(vars []Variable, coefs []float64, lhs, rhs float64, name string) (Constraint, error) {
+	if err := m.guard("AddCons"); err != nil {
+		return Constraint{}, err
+	}
+	raw, err := m.scip.createCons(nil, vars, coefs, lhs, rhs, name, false)
+	return m.cons("AddCons", name, raw, err)
+}
+
+// AddCons adds a new linear constraint; see TryAddCons. It panics on failure.
 func (m Model) AddCons(vars []Variable, coefs []float64, lhs, rhs float64, name string) Constraint {
-	cons, err := m.scip.createCons(nil, vars, coefs, lhs, rhs, name, false)
-	if err != nil {
-		panic("Failed to create constraint")
-	}
-	return Constraint{raw: cons, scip: m.scip}
+	c, err := m.TryAddCons(vars, coefs, lhs, rhs, name)
+	must(err)
+	return c
 }
 
-// AddConsLocal locally adds a constraint (built with NewCons) to the current
-// node and its subnodes.
+// TryAddConsLocal locally adds a constraint (built with NewCons) to the
+// current node and its subnodes.
+func (m Model) TryAddConsLocal(cons ConsBuilder) (Constraint, error) {
+	return m.addLocalCons("AddConsLocal", nil, cons)
+}
+
+// AddConsLocal locally adds a constraint to the current node and its
+// subnodes. It panics on failure.
 func (m Model) AddConsLocal(cons ConsBuilder) Constraint {
-	return m.addLocalCons(nil, cons)
+	c, err := m.TryAddConsLocal(cons)
+	must(err)
+	return c
 }
 
-// AddConsNode locally adds a constraint (built with NewCons) to the given
+// TryAddConsNode locally adds a constraint (built with NewCons) to the given
 // node and its children.
+func (m Model) TryAddConsNode(node *Node, cons ConsBuilder) (Constraint, error) {
+	return m.addLocalCons("AddConsNode", node, cons)
+}
+
+// AddConsNode locally adds a constraint to the given node and its children.
+// It panics on failure.
 func (m Model) AddConsNode(node *Node, cons ConsBuilder) Constraint {
-	return m.addLocalCons(node, cons)
+	c, err := m.TryAddConsNode(node, cons)
+	must(err)
+	return c
 }
 
-func (m Model) addLocalCons(node *Node, cons ConsBuilder) Constraint {
+func (m Model) addLocalCons(op string, node *Node, cons ConsBuilder) (Constraint, error) {
+	if err := m.guard(op); err != nil {
+		return Constraint{}, err
+	}
 	if cons.expr != nil {
-		panic("scip: nonlinear constraints cannot be added locally")
+		return Constraint{}, m.invalid(op, RetcodeInvalidCall, "nonlinear constraints cannot be added locally")
 	}
-	consPtr, err := m.scip.createCons(node, cons.vars(), cons.vals(), cons.lhs, cons.rhs, strOrEmpty(cons.name), true)
-	if err != nil {
-		panic("Failed to create constraint in state Solving")
-	}
-	return Constraint{raw: consPtr, scip: m.scip}
+	raw, err := m.scip.createCons(node, cons.vars(), cons.vals(), cons.lhs, cons.rhs, strOrEmpty(cons.name), true)
+	return m.cons(op, strOrEmpty(cons.name), raw, err)
 }
 
-// AddConsCoef adds a coefficient to the given constraint for the given
-// variable.
+// TryAddConsCoef adds a coefficient to the given linear constraint.
+func (m Model) TryAddConsCoef(c Constraint, v Variable, coef float64) error {
+	if err := m.guard("AddConsCoef"); err != nil {
+		return err
+	}
+	return m.wrap("AddConsCoef", m.scip.addConsCoef(c, v, coef), v.Name())
+}
+
+// AddConsCoef adds a coefficient to the given linear constraint. It panics on
+// failure.
 func (m Model) AddConsCoef(c Constraint, v Variable, coef float64) {
-	if err := m.scip.addConsCoef(c, v, coef); err != nil {
-		panic("Failed to add constraint coefficient")
-	}
+	must(m.TryAddConsCoef(c, v, coef))
 }
 
-// AddConsCoefSetppc adds a binary variable to the given set
+// TryAddConsCoefSetppc adds a binary variable to the given set
 // partitioning/covering/packing constraint.
-func (m Model) AddConsCoefSetppc(c Constraint, v Variable) {
+func (m Model) TryAddConsCoefSetppc(c Constraint, v Variable) error {
+	if err := m.guard("AddConsCoefSetppc"); err != nil {
+		return err
+	}
 	if v.VarType() != VarTypeBinary {
-		panic("variable in setppc constraint must be binary")
+		return m.invalid("AddConsCoefSetppc", RetcodeInvalidData, "variable "+v.Name()+" is not binary")
 	}
-	if err := m.scip.addConsCoefSetppc(c, v); err != nil {
-		panic("Failed to add constraint coefficient")
-	}
+	return m.wrap("AddConsCoefSetppc", m.scip.addConsCoefSetppc(c, v), v.Name())
 }
 
-// AddConsQuadratic adds a new quadratic constraint to the model.
+// AddConsCoefSetppc adds a binary variable to a set partitioning/covering/
+// packing constraint. It panics on failure.
+func (m Model) AddConsCoefSetppc(c Constraint, v Variable) { must(m.TryAddConsCoefSetppc(c, v)) }
+
+// TryAddConsQuadratic adds a quadratic constraint
+// lhs <= sum(linCoefs*linVars) + sum(quadCoefs*quadVars1*quadVars2) <= rhs.
+func (m Model) TryAddConsQuadratic(
+	linVars []Variable, linCoefs []float64,
+	quadVars1, quadVars2 []Variable, quadCoefs []float64,
+	lhs, rhs float64, name string,
+) (Constraint, error) {
+	if err := m.guard("AddConsQuadratic"); err != nil {
+		return Constraint{}, err
+	}
+	raw, err := m.scip.createConsQuadratic(linVars, linCoefs, quadVars1, quadVars2, quadCoefs, lhs, rhs, name)
+	return m.cons("AddConsQuadratic", name, raw, err)
+}
+
+// AddConsQuadratic adds a quadratic constraint; see TryAddConsQuadratic. It
+// panics on failure.
 func (m Model) AddConsQuadratic(
 	linVars []Variable, linCoefs []float64,
 	quadVars1, quadVars2 []Variable, quadCoefs []float64,
 	lhs, rhs float64, name string,
 ) Constraint {
-	cons, err := m.scip.createConsQuadratic(linVars, linCoefs, quadVars1, quadVars2, quadCoefs, lhs, rhs, name)
-	if err != nil {
-		panic("Failed to create quadratic constraint")
-	}
-	return Constraint{raw: cons, scip: m.scip}
+	c, err := m.TryAddConsQuadratic(linVars, linCoefs, quadVars1, quadVars2, quadCoefs, lhs, rhs, name)
+	must(err)
+	return c
 }
 
-// AddConsNonlinear adds the constraint lhs <= expr <= rhs, where expr is a
+// TryAddConsNonlinear adds the constraint lhs <= expr <= rhs, where expr is a
 // nonlinear expression tree. Use Infinity or NegInfinity for a one-sided
 // constraint.
-func (m Model) AddConsNonlinear(expr Expr, lhs, rhs float64, name string) Constraint {
-	cons, err := m.scip.createConsNonlinear(expr, nil, nil, lhs, rhs, name)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create nonlinear constraint: %v", err))
+func (m Model) TryAddConsNonlinear(expr Expr, lhs, rhs float64, name string) (Constraint, error) {
+	if err := m.guard("AddConsNonlinear"); err != nil {
+		return Constraint{}, err
 	}
-	return Constraint{raw: cons, scip: m.scip}
+	raw, err := m.scip.createConsNonlinear(expr, nil, nil, lhs, rhs, name)
+	return m.cons("AddConsNonlinear", name, raw, err)
 }
 
-// AddConsSetPart adds a new set partitioning constraint with the given binary
-// variables.
-func (m Model) AddConsSetPart(vars []Variable, name string) Constraint {
-	return m.addConsSet(vars, name, m.scip.createConsSetPart)
-}
-
-// AddConsSetCover adds a new set cover constraint with the given binary
-// variables.
-func (m Model) AddConsSetCover(vars []Variable, name string) Constraint {
-	return m.addConsSet(vars, name, m.scip.createConsSetCover)
-}
-
-// AddConsSetPack adds a new set packing constraint with the given binary
-// variables.
-func (m Model) AddConsSetPack(vars []Variable, name string) Constraint {
-	return m.addConsSet(vars, name, m.scip.createConsSetPack)
+// AddConsNonlinear adds a nonlinear constraint; see TryAddConsNonlinear. It
+// panics on failure.
+func (m Model) AddConsNonlinear(expr Expr, lhs, rhs float64, name string) Constraint {
+	c, err := m.TryAddConsNonlinear(expr, lhs, rhs, name)
+	must(err)
+	return c
 }
 
 type consCreator func(vars []Variable, name string) (*C.SCIP_CONS, error)
 
-func (m Model) addConsSet(vars []Variable, name string, create consCreator) Constraint {
+func (m Model) addConsSet(op string, vars []Variable, name string, create consCreator) (Constraint, error) {
+	if err := m.guard(op); err != nil {
+		return Constraint{}, err
+	}
 	for _, v := range vars {
 		if v.VarType() != VarTypeBinary {
-			panic("variables in set partitioning constraint must be binary")
+			return Constraint{}, m.invalid(op, RetcodeInvalidData, "variable "+v.Name()+" is not binary")
 		}
 	}
-	cons, err := create(vars, name)
-	if err != nil {
-		panic("Failed to create set partitioning constraint")
-	}
-	return Constraint{raw: cons, scip: m.scip}
+	raw, err := create(vars, name)
+	return m.cons(op, name, raw, err)
 }
 
-// AddConsCardinality adds a new cardinality constraint allowing at most
-// `cardinality` non-zero variables.
+// TryAddConsSetPart adds a set partitioning constraint over binary variables.
+func (m Model) TryAddConsSetPart(vars []Variable, name string) (Constraint, error) {
+	return m.addConsSet("AddConsSetPart", vars, name, m.scip.createConsSetPart)
+}
+
+// AddConsSetPart adds a set partitioning constraint. It panics on failure.
+func (m Model) AddConsSetPart(vars []Variable, name string) Constraint {
+	c, err := m.TryAddConsSetPart(vars, name)
+	must(err)
+	return c
+}
+
+// TryAddConsSetCover adds a set covering constraint over binary variables.
+func (m Model) TryAddConsSetCover(vars []Variable, name string) (Constraint, error) {
+	return m.addConsSet("AddConsSetCover", vars, name, m.scip.createConsSetCover)
+}
+
+// AddConsSetCover adds a set covering constraint. It panics on failure.
+func (m Model) AddConsSetCover(vars []Variable, name string) Constraint {
+	c, err := m.TryAddConsSetCover(vars, name)
+	must(err)
+	return c
+}
+
+// TryAddConsSetPack adds a set packing constraint over binary variables.
+func (m Model) TryAddConsSetPack(vars []Variable, name string) (Constraint, error) {
+	return m.addConsSet("AddConsSetPack", vars, name, m.scip.createConsSetPack)
+}
+
+// AddConsSetPack adds a set packing constraint. It panics on failure.
+func (m Model) AddConsSetPack(vars []Variable, name string) Constraint {
+	c, err := m.TryAddConsSetPack(vars, name)
+	must(err)
+	return c
+}
+
+// TryAddConsCardinality adds a cardinality constraint allowing at most
+// cardinality non-zero variables.
+func (m Model) TryAddConsCardinality(vars []Variable, cardinality int, name string) (Constraint, error) {
+	if err := m.guard("AddConsCardinality"); err != nil {
+		return Constraint{}, err
+	}
+	raw, err := m.scip.createConsCardinality(vars, cardinality, name)
+	return m.cons("AddConsCardinality", name, raw, err)
+}
+
+// AddConsCardinality adds a cardinality constraint. It panics on failure.
 func (m Model) AddConsCardinality(vars []Variable, cardinality int, name string) Constraint {
-	cons, err := m.scip.createConsCardinality(vars, cardinality, name)
-	if err != nil {
-		panic("Failed to add cardinality constraint")
-	}
-	return Constraint{raw: cons, scip: m.scip}
+	c, err := m.TryAddConsCardinality(vars, cardinality, name)
+	must(err)
+	return c
 }
 
-// AddConsIndicator adds a new indicator constraint: binVar == 1 implies
-// vars . coefs <= rhs.
-func (m Model) AddConsIndicator(binVar Variable, vars []Variable, coefs []float64, rhs float64, name string) Constraint {
+// TryAddConsIndicator adds an indicator constraint: binVar == 1 implies
+// sum(coefs*vars) <= rhs.
+func (m Model) TryAddConsIndicator(binVar Variable, vars []Variable, coefs []float64, rhs float64, name string) (Constraint, error) {
+	if err := m.guard("AddConsIndicator"); err != nil {
+		return Constraint{}, err
+	}
 	if binVar.VarType() != VarTypeBinary {
-		panic("indicator variable must be binary")
+		return Constraint{}, m.invalid("AddConsIndicator", RetcodeInvalidData, "indicator variable "+binVar.Name()+" is not binary")
 	}
-	cons, err := m.scip.createConsIndicator(binVar, vars, coefs, rhs, name)
-	if err != nil {
-		panic("Failed to create indicator constraint")
-	}
-	return Constraint{raw: cons, scip: m.scip}
+	raw, err := m.scip.createConsIndicator(binVar, vars, coefs, rhs, name)
+	return m.cons("AddConsIndicator", name, raw, err)
 }
 
-// AddConsSOS1 adds a new SOS1 constraint (at most one non-zero variable)
-// with optional weights.
+// AddConsIndicator adds an indicator constraint. It panics on failure.
+func (m Model) AddConsIndicator(binVar Variable, vars []Variable, coefs []float64, rhs float64, name string) Constraint {
+	c, err := m.TryAddConsIndicator(binVar, vars, coefs, rhs, name)
+	must(err)
+	return c
+}
+
+// TryAddConsSOS1 adds an SOS1 constraint (at most one non-zero variable) with
+// optional weights.
+func (m Model) TryAddConsSOS1(vars []Variable, weights []float64, name string) (Constraint, error) {
+	if err := m.guard("AddConsSOS1"); err != nil {
+		return Constraint{}, err
+	}
+	raw, err := m.scip.createConsSOS1(vars, weights, name)
+	return m.cons("AddConsSOS1", name, raw, err)
+}
+
+// AddConsSOS1 adds an SOS1 constraint. It panics on failure.
 func (m Model) AddConsSOS1(vars []Variable, weights []float64, name string) Constraint {
-	cons, err := m.scip.createConsSOS1(vars, weights, name)
-	if err != nil {
-		panic("Failed to create SOS1 constraint")
-	}
-	return Constraint{raw: cons, scip: m.scip}
+	c, err := m.TryAddConsSOS1(vars, weights, name)
+	must(err)
+	return c
 }
 
-// SetConsModifiable sets the constraint as modifiable or not.
+// TrySetConsModifiable sets the constraint's modifiable flag.
+func (m Model) TrySetConsModifiable(c Constraint, modifiable bool) error {
+	if err := m.guard("SetConsModifiable"); err != nil {
+		return err
+	}
+	return m.wrap("SetConsModifiable", m.scip.setConsModifiable(c, modifiable), c.Name())
+}
+
+// SetConsModifiable sets the constraint's modifiable flag. It panics on failure.
 func (m Model) SetConsModifiable(c Constraint, modifiable bool) {
-	if err := m.scip.setConsModifiable(c, modifiable); err != nil {
-		panic("Failed to set constraint modifiable")
-	}
+	must(m.TrySetConsModifiable(c, modifiable))
 }
 
-// SetConsRemovable sets the constraint as removable or not.
+// TrySetConsRemovable sets the constraint's removable flag.
+func (m Model) TrySetConsRemovable(c Constraint, removable bool) error {
+	if err := m.guard("SetConsRemovable"); err != nil {
+		return err
+	}
+	return m.wrap("SetConsRemovable", m.scip.setConsRemovable(c, removable), c.Name())
+}
+
+// SetConsRemovable sets the constraint's removable flag. It panics on failure.
 func (m Model) SetConsRemovable(c Constraint, removable bool) {
-	if err := m.scip.setConsRemovable(c, removable); err != nil {
-		panic("Failed to set constraint removable")
-	}
+	must(m.TrySetConsRemovable(c, removable))
 }
 
-// SetConsSeparated sets whether the constraint should be separated during LP
+// TrySetConsSeparated sets whether the constraint is separated during LP
 // processing.
-func (m Model) SetConsSeparated(c Constraint, separate bool) {
-	if err := m.scip.setConsSeparated(c, separate); err != nil {
-		panic("Failed to set constraint separated")
+func (m Model) TrySetConsSeparated(c Constraint, separate bool) error {
+	if err := m.guard("SetConsSeparated"); err != nil {
+		return err
 	}
+	return m.wrap("SetConsSeparated", m.scip.setConsSeparated(c, separate), c.Name())
 }
+
+// SetConsSeparated sets whether the constraint is separated. It panics on failure.
+func (m Model) SetConsSeparated(c Constraint, separate bool) {
+	must(m.TrySetConsSeparated(c, separate))
+}
+
+// ------------------------------------------------------------- helpers
 
 func scipVars(s *Scip, original bool) []Variable {
 	m := s.vars(original)

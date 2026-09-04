@@ -110,13 +110,13 @@ func pluginCopy[T any](target *C.SCIP, id uintptr) (T, bool) {
 	item := plugins.get(id)
 	c, ok := item.(Copyable)
 	if !ok {
-		stashPanic(target, fmt.Sprintf("scip: plugin %T is not Copyable", item))
+		stashPanic(target, "", fmt.Sprintf("scip: plugin %T is not Copyable", item))
 		return zero, false
 	}
 	cp := c.Copy()
 	t, ok := cp.(T)
 	if !ok {
-		stashPanic(target, fmt.Sprintf("scip: %T.Copy returned %T, want %v",
+		stashPanic(target, "", fmt.Sprintf("scip: %T.Copy returned %T, want %v",
 			item, cp, reflect.TypeOf((*T)(nil)).Elem()))
 	}
 	return t, ok
@@ -142,7 +142,7 @@ func pluginAs[T any](scip *C.SCIP, id uintptr) (T, bool) {
 	item := plugins.get(id)
 	t, ok := item.(T)
 	if !ok {
-		stashPanic(scip, fmt.Sprintf("scip: plugin data is %T, want %v",
+		stashPanic(scip, "", fmt.Sprintf("scip: plugin data is %T, want %v",
 			item, reflect.TypeOf((*T)(nil)).Elem()))
 	}
 	return t, ok
@@ -150,35 +150,43 @@ func pluginAs[T any](scip *C.SCIP, id uintptr) (T, bool) {
 
 // panicStash stores panics raised inside SCIP callbacks. Panics cannot unwind
 // through C frames; instead they are recovered here, the callback reports an
-// error retcode, and the panic is re-raised once the top-level SCIP call
-// (e.g. Solve) returns.
+// error retcode, and the top-level call (Solve, FreeTransform, AddSol)
+// returns them as a *CallbackPanic.
 type panicStore struct {
 	mu   sync.Mutex
-	vals map[*C.SCIP][]any
+	vals map[*C.SCIP][]*CallbackPanic
 }
 
-var stashedPanics = &panicStore{vals: make(map[*C.SCIP][]any)}
+var stashedPanics = &panicStore{vals: make(map[*C.SCIP][]*CallbackPanic)}
 
-func stashPanic(scip *C.SCIP, r any) {
+func stashPanic(scip *C.SCIP, plugin string, r any) {
 	stashedPanics.mu.Lock()
 	defer stashedPanics.mu.Unlock()
 	if scip == nil {
 		panic(r)
 	}
 	scip = rootScip(scip) // a sub-SCIP's panics surface on the model the user solves
-	stashedPanics.vals[scip] = append(stashedPanics.vals[scip], r)
+	stashedPanics.vals[scip] = append(stashedPanics.vals[scip], &CallbackPanic{Plugin: plugin, Value: r})
 }
 
 // catchPanic is deferred at the top of every exported callback to recover and
-// stash any panic before control returns into C.
-func catchPanic(scip *C.SCIP) {
+// stash any panic before control returns into C. kind and id identify the
+// plugin; the label is only built when a panic actually happened.
+func catchPanic(scip *C.SCIP, kind string, id uintptr) {
 	if r := recover(); r != nil {
-		stashPanic(scip, r)
+		stashPanic(scip, pluginLabel(kind, id), r)
 	}
 }
 
+func pluginLabel(kind string, id uintptr) string {
+	if item := plugins.get(id); item != nil {
+		return fmt.Sprintf("%s %T", kind, item)
+	}
+	return kind
+}
+
 // takePanics returns and clears any stashed panics for the given instance.
-func takePanics(scip *C.SCIP) []any {
+func takePanics(scip *C.SCIP) []*CallbackPanic {
 	stashedPanics.mu.Lock()
 	defer stashedPanics.mu.Unlock()
 	v := stashedPanics.vals[scip]
@@ -186,15 +194,16 @@ func takePanics(scip *C.SCIP) []any {
 	return v
 }
 
-func rethrowPanics(scip *C.SCIP) {
+// callbackError returns the panics stashed during the last top-level call as
+// one *CallbackPanic (further ones in More), or nil.
+func callbackError(scip *C.SCIP) error {
 	ps := takePanics(scip)
-	switch len(ps) {
-	case 0:
-	case 1:
-		panic(ps[0])
-	default:
-		panic(fmt.Sprintf("scip: %d panics in plugin callbacks; first: %v; rest: %v", len(ps), ps[0], ps[1:]))
+	if len(ps) == 0 {
+		return nil
 	}
+	first := ps[0]
+	first.More = ps[1:]
+	return first
 }
 
 // includeResult converts an include retcode, dropping the registry entry on
@@ -222,7 +231,7 @@ func solvingModel(scip *C.SCIP) Model {
 //export GoBranchFree
 func GoBranchFree(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "branchrule", uintptr(C.scipgo_branchruleId(branchrule)))
 	plugins.del(uintptr(C.scipgo_branchruleId(branchrule)))
 	forgetCopy(scip)
 	ret = C.SCIP_OKAY
@@ -232,7 +241,7 @@ func GoBranchFree(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE) (ret C.SCIP_RETCO
 //export GoBranchCopy
 func GoBranchCopy(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "branchrule", uintptr(C.scipgo_branchruleId(branchrule)))
 	rule, ok := pluginCopy[BranchRule](scip, uintptr(C.scipgo_branchruleId(branchrule)))
 	if !ok {
 		return
@@ -250,7 +259,7 @@ func GoBranchCopy(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE) (ret C.SCIP_RETCO
 //export GoBranchExecLp
 func GoBranchExecLp(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE, allowaddcons C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "branchrule", uintptr(C.scipgo_branchruleId(branchrule)))
 	rule, ok := pluginAs[BranchRule](scip, uintptr(C.scipgo_branchruleId(branchrule)))
 	if !ok {
 		return
@@ -265,7 +274,7 @@ func GoBranchExecLp(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE, allowaddcons C.
 		mustBranchVarVal(scip, res.Candidate.VarProbID, res.Candidate.LpSolVal)
 	}
 	if res.Kind == BranchingResultCustomBranching && C.SCIPgetNChildren(scip) <= 0 {
-		stashPanic(scip, "custom branching rule must create at least one child node")
+		stashPanic(scip, "", "custom branching rule must create at least one child node")
 		return
 	}
 
@@ -279,7 +288,7 @@ func GoBranchExecLp(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE, allowaddcons C.
 //export GoEventhdlrFree
 func GoEventhdlrFree(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "eventhdlr", uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	plugins.del(uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	forgetCopy(scip)
 	ret = C.SCIP_OKAY
@@ -289,7 +298,7 @@ func GoEventhdlrFree(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR) (ret C.SCIP_RETC
 //export GoEventhdlrCopy
 func GoEventhdlrCopy(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "eventhdlr", uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	eh, ok := pluginCopy[Eventhdlr](scip, uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	if !ok {
 		return
@@ -305,7 +314,7 @@ func GoEventhdlrCopy(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR) (ret C.SCIP_RETC
 //export GoEventhdlrInit
 func GoEventhdlrInit(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "eventhdlr", uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	hdlr, ok := pluginAs[Eventhdlr](scip, uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	if !ok {
 		return
@@ -317,7 +326,7 @@ func GoEventhdlrInit(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR) (ret C.SCIP_RETC
 //export GoEventhdlrExec
 func GoEventhdlrExec(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR, event *C.SCIP_EVENT, eventdata *C.SCIP_EVENTDATA) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "eventhdlr", uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	hdlr, ok := pluginAs[Eventhdlr](scip, uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	if !ok {
 		return
@@ -336,7 +345,7 @@ func GoEventhdlrExec(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR, event *C.SCIP_EV
 //export GoNodeselFree
 func GoNodeselFree(scip *C.SCIP, nodesel *C.SCIP_NODESEL) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "nodesel", uintptr(C.scipgo_nodeselId(nodesel)))
 	plugins.del(uintptr(C.scipgo_nodeselId(nodesel)))
 	forgetCopy(scip)
 	ret = C.SCIP_OKAY
@@ -346,7 +355,7 @@ func GoNodeselFree(scip *C.SCIP, nodesel *C.SCIP_NODESEL) (ret C.SCIP_RETCODE) {
 //export GoNodeselCopy
 func GoNodeselCopy(scip *C.SCIP, nodesel *C.SCIP_NODESEL) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "nodesel", uintptr(C.scipgo_nodeselId(nodesel)))
 	ns, ok := pluginCopy[NodeSel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
 	if !ok {
 		return
@@ -363,7 +372,7 @@ func GoNodeselCopy(scip *C.SCIP, nodesel *C.SCIP_NODESEL) (ret C.SCIP_RETCODE) {
 //export GoNodeselSelect
 func GoNodeselSelect(scip *C.SCIP, nodesel *C.SCIP_NODESEL, selnode **C.SCIP_NODE) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "nodesel", uintptr(C.scipgo_nodeselId(nodesel)))
 	sel, ok := pluginAs[NodeSel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
 	if !ok {
 		return
@@ -381,7 +390,7 @@ func GoNodeselSelect(scip *C.SCIP, nodesel *C.SCIP_NODESEL, selnode **C.SCIP_NOD
 
 //export GoNodeselComp
 func GoNodeselComp(scip *C.SCIP, nodesel *C.SCIP_NODESEL, node1, node2 *C.SCIP_NODE) (ret C.int) {
-	defer catchPanic(scip)
+	defer catchPanic(scip, "nodesel", uintptr(C.scipgo_nodeselId(nodesel)))
 	sel, ok := pluginAs[NodeSel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
 	if !ok {
 		return 0
@@ -414,7 +423,7 @@ func callPricer(scip *C.SCIP, pricer *C.SCIP_PRICER, lowerbound *C.double, stope
 	}
 
 	if farkas && res.State == PricerResultStateStopEarly {
-		stashPanic(scip, "farkas pricing should never stop early as LP would remain infeasible")
+		stashPanic(scip, "", "farkas pricing should never stop early as LP would remain infeasible")
 		return C.SCIP_ERROR
 	}
 
@@ -431,7 +440,7 @@ func callPricer(scip *C.SCIP, pricer *C.SCIP_PRICER, lowerbound *C.double, stope
 //export GoPricerFree
 func GoPricerFree(scip *C.SCIP, pricer *C.SCIP_PRICER) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "pricer", uintptr(C.scipgo_pricerId(pricer)))
 	plugins.del(uintptr(C.scipgo_pricerId(pricer)))
 	forgetCopy(scip)
 	ret = C.SCIP_OKAY
@@ -441,7 +450,7 @@ func GoPricerFree(scip *C.SCIP, pricer *C.SCIP_PRICER) (ret C.SCIP_RETCODE) {
 //export GoPricerCopy
 func GoPricerCopy(scip *C.SCIP, pricer *C.SCIP_PRICER, valid *C.uint) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "pricer", uintptr(C.scipgo_pricerId(pricer)))
 	p, ok := pluginCopy[Pricer](scip, uintptr(C.scipgo_pricerId(pricer)))
 	if !ok {
 		return
@@ -459,14 +468,14 @@ func GoPricerCopy(scip *C.SCIP, pricer *C.SCIP_PRICER, valid *C.uint) (ret C.SCI
 //export GoPricerRedcost
 func GoPricerRedcost(scip *C.SCIP, pricer *C.SCIP_PRICER, lowerbound *C.double, stopearly *C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "", 0)
 	return callPricer(scip, pricer, lowerbound, stopearly, result, false)
 }
 
 //export GoPricerFarkas
 func GoPricerFarkas(scip *C.SCIP, pricer *C.SCIP_PRICER, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "", 0)
 	return callPricer(scip, pricer, nil, nil, result, true)
 }
 
@@ -475,7 +484,7 @@ func GoPricerFarkas(scip *C.SCIP, pricer *C.SCIP_PRICER, result *C.SCIP_RESULT) 
 //export GoHeurFree
 func GoHeurFree(scip *C.SCIP, heur *C.SCIP_HEUR) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "heuristic", uintptr(C.scipgo_heurId(heur)))
 	plugins.del(uintptr(C.scipgo_heurId(heur)))
 	forgetCopy(scip)
 	ret = C.SCIP_OKAY
@@ -485,7 +494,7 @@ func GoHeurFree(scip *C.SCIP, heur *C.SCIP_HEUR) (ret C.SCIP_RETCODE) {
 //export GoHeurCopy
 func GoHeurCopy(scip *C.SCIP, heur *C.SCIP_HEUR) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "heuristic", uintptr(C.scipgo_heurId(heur)))
 	h, ok := pluginCopy[Heuristic](scip, uintptr(C.scipgo_heurId(heur)))
 	if !ok {
 		return
@@ -504,7 +513,7 @@ func GoHeurCopy(scip *C.SCIP, heur *C.SCIP_HEUR) (ret C.SCIP_RETCODE) {
 //export GoHeurExec
 func GoHeurExec(scip *C.SCIP, heur *C.SCIP_HEUR, heurtiming C.SCIP_HEURTIMING, nodeinfeasible C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "heuristic", uintptr(C.scipgo_heurId(heur)))
 	h, ok := pluginAs[Heuristic](scip, uintptr(C.scipgo_heurId(heur)))
 	if !ok {
 		return
@@ -532,7 +541,7 @@ func GoHeurExec(scip *C.SCIP, heur *C.SCIP_HEUR, heurtiming C.SCIP_HEURTIMING, n
 //export GoSepaFree
 func GoSepaFree(scip *C.SCIP, sepa *C.SCIP_SEPA) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "separator", uintptr(C.scipgo_sepaId(sepa)))
 	plugins.del(uintptr(C.scipgo_sepaId(sepa)))
 	forgetCopy(scip)
 	ret = C.SCIP_OKAY
@@ -542,7 +551,7 @@ func GoSepaFree(scip *C.SCIP, sepa *C.SCIP_SEPA) (ret C.SCIP_RETCODE) {
 //export GoSepaCopy
 func GoSepaCopy(scip *C.SCIP, sepa *C.SCIP_SEPA) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "separator", uintptr(C.scipgo_sepaId(sepa)))
 	sp, ok := pluginCopy[Separator](scip, uintptr(C.scipgo_sepaId(sepa)))
 	if !ok {
 		return
@@ -561,7 +570,7 @@ func GoSepaCopy(scip *C.SCIP, sepa *C.SCIP_SEPA) (ret C.SCIP_RETCODE) {
 //export GoSepaExecLp
 func GoSepaExecLp(scip *C.SCIP, sepa *C.SCIP_SEPA, result *C.SCIP_RESULT, allowlocal C.uint, depth C.int) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "separator", uintptr(C.scipgo_sepaId(sepa)))
 	s, ok := pluginAs[Separator](scip, uintptr(C.scipgo_sepaId(sepa)))
 	if !ok {
 		return
@@ -584,7 +593,7 @@ func GoSepaExecSol(scip *C.SCIP, sepa *C.SCIP_SEPA, sol *C.SCIP_SOL, result *C.S
 //export GoConsFree
 func GoConsFree(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
 	plugins.del(uintptr(C.scipgo_conshdlrId(conshdlr)))
 	forgetCopy(scip)
 	ret = C.SCIP_OKAY
@@ -594,7 +603,7 @@ func GoConsFree(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR) (ret C.SCIP_RETCODE) {
 //export GoConsCopy
 func GoConsCopy(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, valid *C.uint) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
 	c, ok := pluginCopy[Conshdlr](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
 	if !ok {
 		return
@@ -621,7 +630,7 @@ func GoConsCopy(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, valid *C.uint) (ret C.S
 //export GoConsEnfops
 func GoConsEnfops(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nconss C.int, nusefulconss C.int, solinfeasible C.uint, objinfeasible C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
 	c, ok := pluginAs[ConshdlrEnfoPS](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
 	if !ok {
 		return
@@ -635,7 +644,7 @@ func GoConsEnfops(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, 
 //export GoConsSepalp
 func GoConsSepalp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nconss C.int, nusefulconss C.int, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
 	c, ok := pluginAs[ConshdlrSepa](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
 	if !ok {
 		return
@@ -648,7 +657,7 @@ func GoConsSepalp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, 
 //export GoConsProp
 func GoConsProp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nconss C.int, nusefulconss C.int, nmarkedconss C.int, proptiming C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
 	c, ok := pluginAs[ConshdlrProp](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
 	if !ok {
 		return
@@ -661,7 +670,7 @@ func GoConsProp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nc
 //export GoConsEnfolp
 func GoConsEnfolp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nconss C.int, nusefulconss C.int, solinfeasible C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
 	c, ok := pluginAs[Conshdlr](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
 	if !ok {
 		return
@@ -675,7 +684,7 @@ func GoConsEnfolp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, 
 //export GoConsCheck
 func GoConsCheck(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nconss C.int, sol *C.SCIP_SOL, checkintegrality C.uint, checklprows C.uint, printreason C.uint, completely C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip)
+	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
 	c, ok := pluginAs[Conshdlr](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
 	if !ok {
 		return
