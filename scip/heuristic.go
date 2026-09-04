@@ -9,7 +9,7 @@ import "C"
 // runtime statistics (how often it ran and how many solutions it found).
 // Obtain one via Model.FindHeur.
 type HeurPlugin struct {
-	raw  *C.SCIP_HEUR
+	raw *C.SCIP_HEUR
 }
 
 // Inner returns a pointer to the underlying SCIP_HEUR.
