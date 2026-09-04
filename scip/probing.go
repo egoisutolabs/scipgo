@@ -268,6 +268,7 @@ func (p *Prober) TryEnd() error {
 
 // InProbing reports whether the model is in probing mode.
 func InProbing(m Model) bool {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	must(m.guard("InProbing"))
 	if !stagesTransformed.has(m.scip.stage()) {
 		return false
@@ -277,6 +278,7 @@ func InProbing(m Model) bool {
 
 // InDive reports whether the model is in diving mode.
 func InDive(m Model) bool {
+	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
 	must(m.guard("InDive"))
 	if !stagesInDive.has(m.scip.stage()) {
 		return false

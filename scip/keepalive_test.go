@@ -10,10 +10,11 @@ import (
 	"testing"
 )
 
-// TestEveryNativeCallKeepsItsOwnerAlive fails if a method that enters C
-// through a Scip or a handle lacks runtime.KeepAlive on the wrapper. The
-// instance registry holds only weak pointers, so without it the finalizer
-// may free the SCIP instance while the C call is still using it.
+// TestEveryNativeCallKeepsItsOwnerAlive fails if a function that enters C
+// through a Scip or a handle, received or passed as a parameter, lacks
+// runtime.KeepAlive on the wrapper. The instance registry holds only weak
+// pointers, so without it the finalizer may free the SCIP instance while
+// the C call is still using it.
 func TestEveryNativeCallKeepsItsOwnerAlive(t *testing.T) {
 	receivers := map[string]bool{"Scip": true, "Model": true, "Variable": true, "Constraint": true, "Solution": true,
 		"Node": true, "Row": true, "Col": true, "Prober": true, "Diver": true, "BranchRulePlugin": true,
@@ -35,15 +36,28 @@ func TestEveryNativeCallKeepsItsOwnerAlive(t *testing.T) {
 		}
 		for _, d := range f.Decls {
 			fn, ok := d.(*ast.FuncDecl)
-			if !ok || fn.Body == nil || fn.Recv == nil || len(fn.Recv.List) == 0 {
+			if !ok || fn.Body == nil {
 				continue
 			}
-			rt := fn.Recv.List[0].Type
-			if star, ok := rt.(*ast.StarExpr); ok {
-				rt = star.X
+			// the wrapper type: the receiver, or else the first parameter of a wrapper type
+			var fields []*ast.Field
+			if fn.Recv != nil {
+				fields = fn.Recv.List
+			} else {
+				fields = fn.Type.Params.List
 			}
-			id, ok := rt.(*ast.Ident)
-			if !ok || !receivers[id.Name] {
+			var id *ast.Ident
+			for _, fld := range fields {
+				rt := fld.Type
+				if star, ok := rt.(*ast.StarExpr); ok {
+					rt = star.X
+				}
+				if cand, ok := rt.(*ast.Ident); ok && receivers[cand.Name] {
+					id = cand
+					break
+				}
+			}
+			if id == nil {
 				continue
 			}
 			entersC, keeps := false, false

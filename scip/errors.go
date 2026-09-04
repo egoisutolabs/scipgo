@@ -155,9 +155,13 @@ func joinDetail(a, b string) string {
 const genNone = ^uint64(0)
 
 func handleErr(op, what string, raw bool, owner *Scip, gen uint64, orig bool, m *Scip) *Error {
+	stageOf := owner
+	if m != nil {
+		stageOf = m // an argument error is about the call on m
+	}
 	switch {
 	case !raw:
-		return &Error{Op: op, Stage: owner.stage(), Retcode: RetcodeInvalidData, Detail: "zero " + what}
+		return &Error{Op: op, Stage: stageOf.stage(), Retcode: RetcodeInvalidData, Detail: "zero " + what}
 	case !owner.alive():
 		return &Error{Op: op, Stage: StageFree, Retcode: RetcodeInvalidCall, Detail: what + " belongs to a freed model"}
 	case gen != genNone && gen != owner.gen(orig):
