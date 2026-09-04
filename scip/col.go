@@ -228,9 +228,13 @@ func (c Col) Age() int {
 func (c Col) Redcost() (float64, bool) {
 	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("Col.Redcost")
-	// SCIPgetColRedcost also requires the current node's LP; see Variable.Redcost.
-	if !stagesSolving.has(c.scip.stage()) || C.SCIPhasCurrentNodeLP(c.scip.raw) == 0 {
+	// See Variable.Redcost: only an optimal current-node LP has reduced costs.
+	if !c.scip.lpSolved() {
 		return 0, false
 	}
-	return float64(C.SCIPgetColRedcost(c.scip.raw, c.raw)), true
+	rc := float64(C.SCIPgetColRedcost(c.scip.raw, c.raw))
+	if rc == scipInvalid {
+		return 0, false
+	}
+	return rc, true
 }

@@ -238,3 +238,15 @@ func (m Model) invalid(op string, rc Retcode, detail string) error {
 func (m Model) call(op string, rc C.SCIP_RETCODE) error {
 	return m.wrap(op, retcodeError(rc), "")
 }
+
+// lpSolved reports whether the current node's LP exists and is solved to
+// optimality, the one condition under which LP-derived values such as
+// reduced costs are defined. SCIPhasCurrentNodeLP alone is not enough: the
+// LP can exist while its solution is stale or invalid (after a bound,
+// objective or row change and before the next solve).
+func (s *Scip) lpSolved() bool {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	return stagesSolving.has(s.stage()) &&
+		C.SCIPhasCurrentNodeLP(s.raw) != 0 &&
+		C.SCIPgetLPSolstat(s.raw) == C.SCIP_LPSOLSTAT_OPTIMAL
+}

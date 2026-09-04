@@ -218,10 +218,10 @@ func (v Variable) Transformed() (Variable, bool) {
 func (v Variable) Redcost() (float64, bool) {
 	defer runtime.KeepAlive(v.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	v.live("Variable.Redcost")
-	// Reduced costs exist only while solving with the current node's LP
-	// solved; SCIPgetVarRedcost is undefined elsewhere, and "not available"
-	// is the honest answer, not a panic.
-	if !stagesSolving.has(v.scip.stage()) || C.SCIPhasCurrentNodeLP(v.scip.raw) == 0 {
+	// Reduced costs exist only for an optimal current-node LP; elsewhere
+	// SCIPgetVarRedcost is undefined or stale, and "not available" is the
+	// honest answer, not a panic.
+	if !v.scip.lpSolved() {
 		return 0, false
 	}
 	rc := float64(C.SCIPgetVarRedcost(v.scip.raw, v.raw))
