@@ -23,11 +23,40 @@ func (p *Prober) Depth() int { return int(C.SCIPgetProbingDepth(p.scip.raw)) }
 
 // Backtrack undoes all changes applied in probing up to (and including) the
 // given probing depth.
-func (p *Prober) Backtrack(depth int) {
-	if depth >= p.Depth() {
-		panic("probing depth must be less than the current probing depth")
+func (p *Prober) Backtrack(depth int) { must(p.TryBacktrack(depth)) }
+
+// TryBacktrack undoes all probing changes above the given depth, which must be
+// below the current probing depth.
+// active rejects use of the prober when SCIP is not probing. SCIPinProbing
+// itself aborts outside the transformed-to-exit-solve stages, so the stage is
+// checked before it is asked.
+func (p *Prober) active(op string) error {
+	m := Model{scip: p.scip}
+	if err := m.guard(op); err != nil {
+		return err
 	}
-	mustOK(C.SCIPbacktrackProbing(p.scip.raw, C.int(depth)))
+	if err := m.requireStage(op, StageTransformed, StageInitPresolve, StagePresolving, StageExitPresolve,
+		StagePresolved, StageInitSolve, StageSolving, StageSolved, StageExitSolve); err != nil {
+		return err
+	}
+	if C.SCIPinProbing(p.scip.raw) != 1 {
+		return m.invalid(op, RetcodeInvalidCall, "SCIP is not in probing mode")
+	}
+	return nil
+}
+
+func (p *Prober) TryBacktrack(depth int) error {
+	m := Model{scip: p.scip}
+	if depth < 0 {
+		return m.invalid("Prober.Backtrack", RetcodeInvalidData, "negative depth")
+	}
+	if err := p.active("Prober.Backtrack"); err != nil {
+		return err
+	}
+	if depth >= p.Depth() {
+		return m.invalid("Prober.Backtrack", RetcodeInvalidData, "depth must be below the current probing depth")
+	}
+	return m.call("Prober.Backtrack", C.SCIPbacktrackProbing(p.scip.raw, C.int(depth)))
 }
 
 // ChgVarLb changes the lower bound of a variable in the current probing node.
@@ -139,11 +168,15 @@ func (p *Prober) AddRow(r Row) {
 }
 
 // End ends probing mode. Must be called exactly once after StartProbing.
-func (p *Prober) End() {
-	if C.SCIPinProbing(p.scip.raw) != 1 {
-		panic("SCIP is expected to be in probing mode before Prober.End is called.")
+func (p *Prober) End() { must(p.TryEnd()) }
+
+// TryEnd ends probing mode, returning an error if SCIP is not probing.
+func (p *Prober) TryEnd() error {
+	m := Model{scip: p.scip}
+	if err := p.active("Prober.End"); err != nil {
+		return err
 	}
-	C.SCIPendProbing(p.scip.raw)
+	return m.call("Prober.End", C.SCIPendProbing(p.scip.raw))
 }
 
 // InProbing reports whether SCIP is currently in probing mode.

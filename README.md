@@ -75,6 +75,31 @@ model.Add(scip.NewCons().Name("c").Eq(1).Coef(x, 1).Coef(y, 1))
 solved := model.Solve()
 ```
 
+## Errors
+
+Every `Model` method that can fail against SCIP comes in two forms. `Try*`
+returns an error and the plain name panics with the same value, so pick per
+call site:
+
+```go
+v, err := model.TryAddVar(0, 1, 1, "x", scip.VarTypeBinary)
+var e *scip.Error
+if errors.As(err, &e) {
+	log.Printf("%s failed in stage %s: %v", e.Op, e.Stage, e.Retcode)
+}
+if errors.Is(err, scip.RetcodeInvalidCall) { /* wrong stage */ }
+
+solved, err := model.TrySolve()
+var cp *scip.CallbackPanic
+if errors.As(err, &cp) { /* a plugin panicked: cp.Plugin, cp.Value */ }
+```
+
+`ReadProb`, `AddSol`, `Write` and the `Set*Param` family return errors under
+their plain names. `Try*` calls on a freed `Model` report an error in
+`StageFree` rather than crashing. Not covered: the mutators on `Prober`,
+`Diver` and `Row` panic with a `Retcode` on failure, and query methods such
+as `Status` or `NVars` must not be called after `Free`.
+
 ## Nonlinear constraints
 
 Build an expression tree from variables and constants and add it as a
@@ -97,8 +122,9 @@ model.Add(scip.NewCons().Expression(x.Expr().Mul(y.Expr())).Coef(x, 2).Le(1))
 
 `Heurs`, `Separators` and `Presolvers` list SCIP's built-in plugins;
 `FindHeur`, `FindSeparator` and `FindPresolver` look one up by name. Each
-wrapper exposes its name, priority and statistics, and frequency/priority
-setters let you tune or disable a plugin without touching parameter strings.
+wrapper exposes its name and priority; heuristics and presolvers also report
+call statistics, and heuristics and separators have `SetFreq` so a plugin
+can be tuned or disabled without touching parameter strings.
 
 ## Custom plugins
 

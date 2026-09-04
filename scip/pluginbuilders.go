@@ -42,9 +42,11 @@ func (b BranchRuleBuilder) MaxDepth(d int32) BranchRuleBuilder { b.maxdepth = d;
 func (b BranchRuleBuilder) MaxBoundDist(d float64) BranchRuleBuilder { b.maxbounddist = d; return b }
 
 // AddTo includes the branch rule in a model in the ProblemCreated stage.
-func (b BranchRuleBuilder) AddTo(m Model) {
-	name, desc := strOrEmpty(b.name), strOrEmpty(b.desc)
-	m.IncludeBranchRule(name, desc, b.priority, b.maxdepth, b.maxbounddist, b.rule)
+func (b BranchRuleBuilder) AddTo(m Model) { must(b.TryAddTo(m)) }
+
+// TryAddTo includes the branch rule, returning an error on failure.
+func (b BranchRuleBuilder) TryAddTo(m Model) error {
+	return m.TryIncludeBranchRule(strOrEmpty(b.name), strOrEmpty(b.desc), b.priority, b.maxdepth, b.maxbounddist, b.rule)
 }
 
 // PricerBuilder is a builder for easily creating pricers.
@@ -76,8 +78,11 @@ func (b PricerBuilder) Priority(p int32) PricerBuilder { b.priority = p; return 
 func (b PricerBuilder) Delay(d bool) PricerBuilder { b.delay = d; return b }
 
 // AddTo includes the pricer in a model in the ProblemCreated stage.
-func (b PricerBuilder) AddTo(m Model) {
-	m.IncludePricer(strOrEmpty(b.name), strOrEmpty(b.desc), b.priority, b.delay, b.pricer)
+func (b PricerBuilder) AddTo(m Model) { must(b.TryAddTo(m)) }
+
+// TryAddTo includes the pricer, returning an error on failure.
+func (b PricerBuilder) TryAddTo(m Model) error {
+	return m.TryIncludePricer(strOrEmpty(b.name), strOrEmpty(b.desc), b.priority, b.delay, b.pricer)
 }
 
 // EventHdlrBuilder is a builder for easily creating event handlers.
@@ -97,8 +102,11 @@ func (b EventHdlrBuilder) Name(name string) EventHdlrBuilder { b.name = &name; r
 func (b EventHdlrBuilder) Desc(desc string) EventHdlrBuilder { b.desc = &desc; return b }
 
 // AddTo includes the event handler in a model in the ProblemCreated stage.
-func (b EventHdlrBuilder) AddTo(m Model) {
-	m.IncludeEventhdlr(strOrEmpty(b.name), strOrEmpty(b.desc), b.eventhdlr)
+func (b EventHdlrBuilder) AddTo(m Model) { must(b.TryAddTo(m)) }
+
+// TryAddTo includes the event handler, returning an error on failure.
+func (b EventHdlrBuilder) TryAddTo(m Model) error {
+	return m.TryIncludeEventhdlr(strOrEmpty(b.name), strOrEmpty(b.desc), b.eventhdlr)
 }
 
 // HeurBuilder is a builder for easily creating primal heuristics.
@@ -151,7 +159,10 @@ func (b HeurBuilder) Timing(t HeurTiming) HeurBuilder { b.timing = &t; return b 
 func (b HeurBuilder) UsesSubscip(v bool) HeurBuilder { b.usessubscip = v; return b }
 
 // AddTo includes the heuristic in a model in the ProblemCreated stage.
-func (b HeurBuilder) AddTo(m Model) {
+func (b HeurBuilder) AddTo(m Model) { must(b.TryAddTo(m)) }
+
+// TryAddTo includes the heuristic, returning an error on failure.
+func (b HeurBuilder) TryAddTo(m Model) error {
 	dispchar := byte('?')
 	if b.dispchar != nil {
 		dispchar = *b.dispchar
@@ -160,7 +171,7 @@ func (b HeurBuilder) AddTo(m Model) {
 	if b.timing != nil {
 		timing = *b.timing
 	}
-	m.IncludeHeur(strOrEmpty(b.name), strOrEmpty(b.desc), b.priority, dispchar,
+	return m.TryIncludeHeur(strOrEmpty(b.name), strOrEmpty(b.desc), b.priority, dispchar,
 		b.freq, b.freqofs, b.maxdepth, timing, b.usessubscip, b.heur)
 }
 
@@ -209,8 +220,11 @@ func (b SepaBuilder) UsesSubscip(v bool) SepaBuilder { b.usesubscip = v; return 
 func (b SepaBuilder) Delay(v bool) SepaBuilder { b.delay = v; return b }
 
 // AddTo includes the separator in a model in the ProblemCreated stage.
-func (b SepaBuilder) AddTo(m Model) {
-	m.IncludeSeparator(strOrEmpty(b.name), strOrEmpty(b.desc), b.priority, b.freq,
+func (b SepaBuilder) AddTo(m Model) { must(b.TryAddTo(m)) }
+
+// TryAddTo includes the separator, returning an error on failure.
+func (b SepaBuilder) TryAddTo(m Model) error {
+	return m.TryIncludeSeparator(strOrEmpty(b.name), strOrEmpty(b.desc), b.priority, b.freq,
 		b.maxbounddist, b.usesubscip, b.delay, b.sepa)
 }
 
@@ -244,8 +258,11 @@ func (b NodeSelBuilder) StdPriority(p int32) NodeSelBuilder { b.stdPriority = p;
 func (b NodeSelBuilder) MemSavePriority(p int32) NodeSelBuilder { b.memSavePriority = p; return b }
 
 // AddTo includes the node selector in a model in the ProblemCreated stage.
-func (b NodeSelBuilder) AddTo(m Model) {
-	m.IncludeNodesel(strOrEmpty(b.name), strOrEmpty(b.desc), b.stdPriority, b.memSavePriority, b.nodesel)
+func (b NodeSelBuilder) AddTo(m Model) { must(b.TryAddTo(m)) }
+
+// TryAddTo includes the node selector, returning an error on failure.
+func (b NodeSelBuilder) TryAddTo(m Model) error {
+	return m.TryIncludeNodesel(strOrEmpty(b.name), strOrEmpty(b.desc), b.stdPriority, b.memSavePriority, b.nodesel)
 }
 
 func strOrEmpty(s *string) string {

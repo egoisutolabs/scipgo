@@ -70,7 +70,8 @@ type BranchingCandidate struct {
 
 // BranchRulePlugin is a wrapper for the internal SCIP branch rule object.
 type BranchRulePlugin struct {
-	raw *C.SCIP_BRANCHRULE
+	raw  *C.SCIP_BRANCHRULE
+	scip *Scip // keeps the owning instance alive and identifies it
 }
 
 // Inner returns the internal raw pointer of the branch rule.

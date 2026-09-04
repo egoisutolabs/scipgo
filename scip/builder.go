@@ -93,7 +93,34 @@ func (b VarBuilder) Obj(obj float64) VarBuilder {
 
 // AddTo adds the variable to a model in the ProblemCreated stage.
 func (b VarBuilder) AddTo(m Model) Variable {
-	return m.AddVar(b.lb, b.ub, b.obj, b.defaultName(m.NVars()), b.varType)
+	v, err := b.TryAddTo(m)
+	must(err)
+	return v
+}
+
+// TryAddTo adds the variable to the model, returning an error on failure.
+func (b VarBuilder) TryAddTo(m Model) (Variable, error) {
+	if err := m.guard("AddVar"); err != nil {
+		return Variable{}, err
+	}
+	name, err := builderName(m, "AddVar", b.name, func() string { return b.defaultName(m.NVars()) })
+	if err != nil {
+		return Variable{}, err
+	}
+	return m.TryAddVar(b.lb, b.ub, b.obj, name, b.varType)
+}
+
+// builderName returns the explicit name, or the default built from a count
+// getter, which SCIP only permits once a problem exists (it aborts the
+// process otherwise), so the stage is checked first.
+func builderName(m Model, op string, explicit *string, def func() string) (string, error) {
+	if explicit != nil {
+		return *explicit, nil
+	}
+	if st := m.Stage(); st < StageProblem || st == StageTransforming || st > StageExitSolve {
+		return "", m.invalid(op, RetcodeInvalidCall, "no problem exists to name the object after")
+	}
+	return def(), nil
 }
 
 // AddToSolving adds the variable to a model in the Solving stage.
@@ -217,18 +244,34 @@ func (b ConsBuilder) Separated(separate bool) ConsBuilder {
 
 // AddTo adds the constraint to a model in the ProblemCreated stage.
 func (b ConsBuilder) AddTo(m Model) Constraint {
+	c, err := b.TryAddTo(m)
+	must(err)
+	return c
+}
+
+// TryAddTo adds the constraint to the model, returning an error on failure.
+func (b ConsBuilder) TryAddTo(m Model) (Constraint, error) {
+	if err := m.guard("AddCons"); err != nil {
+		return Constraint{}, err
+	}
+	name, err := builderName(m, "AddCons", b.name, func() string { return b.defaultName(m.NConss()) })
+	if err != nil {
+		return Constraint{}, err
+	}
 	var c Constraint
 	if b.expr != nil {
-		raw, err := m.scip.createConsNonlinear(*b.expr, b.vars(), b.vals(), b.lhs, b.rhs, b.defaultName(m.NConss()))
-		if err != nil {
-			panic(fmt.Sprintf("Failed to create nonlinear constraint: %v", err))
+		if err := m.checkVars("AddConsNonlinear", b.vars()...); err != nil {
+			return Constraint{}, err
 		}
-		c = Constraint{raw: raw, scip: m.scip}
+		raw, cerr := m.scip.createConsNonlinear(*b.expr, b.vars(), b.vals(), b.lhs, b.rhs, name)
+		c, err = m.cons("AddConsNonlinear", name, raw, cerr)
 	} else {
-		c = m.AddCons(b.vars(), b.vals(), b.lhs, b.rhs, b.defaultName(m.NConss()))
+		c, err = m.TryAddCons(b.vars(), b.vals(), b.lhs, b.rhs, name)
 	}
-	b.applyFlags(m, c)
-	return c
+	if err != nil {
+		return Constraint{}, err
+	}
+	return c, b.applyFlags(m, c)
 }
 
 // AddToSolving adds the constraint to a model in the Solving stage.
@@ -257,16 +300,23 @@ func (b ConsBuilder) defaultName(nConss int) string {
 	return "cons" + strconv.Itoa(nConss)
 }
 
-func (b ConsBuilder) applyFlags(m Model, c Constraint) {
+func (b ConsBuilder) applyFlags(m Model, c Constraint) error {
 	if b.modifiable != nil {
-		m.SetConsModifiable(c, *b.modifiable)
+		if err := m.TrySetConsModifiable(c, *b.modifiable); err != nil {
+			return err
+		}
 	}
 	if b.removable != nil {
-		m.SetConsRemovable(c, *b.removable)
+		if err := m.TrySetConsRemovable(c, *b.removable); err != nil {
+			return err
+		}
 	}
 	if b.separated != nil {
-		m.SetConsSeparated(c, *b.separated)
+		if err := m.TrySetConsSeparated(c, *b.separated); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // RowSource describes where a row created by RowBuilder comes from.
@@ -364,11 +414,35 @@ func (b RowBuilder) Source(src RowSource) RowBuilder {
 
 // AddTo adds the row to a model in the ProblemCreated stage.
 func (b RowBuilder) AddTo(m Model) Row {
+	r, err := b.TryAddTo(m)
+	must(err)
+	return r
+}
+
+// TryAddTo creates the row in the model, returning an error on failure.
+func (b RowBuilder) TryAddTo(m Model) (Row, error) {
+	if err := m.guard("AddRow"); err != nil {
+		return Row{}, err
+	}
+	if src := b.source; src != nil {
+		var err error
+		switch {
+		case src.separator != nil:
+			err = m.checkHandle("AddRow", "SeparatorPlugin", src.separator.raw != nil, src.separator.scip)
+		case src.constraintHandler != nil:
+			err = m.checkHandle("AddRow", "ConshdlrPlugin", src.constraintHandler.raw != nil, src.constraintHandler.scip)
+		case src.constraint != nil:
+			err = m.checkCons("AddRow", *src.constraint)
+		}
+		if err != nil {
+			return Row{}, err
+		}
+	}
 	rowPtr, err := m.scip.createEmptyRow(&b)
 	if err != nil {
-		panic("Failed to create row")
+		return Row{}, m.wrap("AddRow", err, strOrEmpty(b.name))
 	}
-	return Row{raw: rowPtr, scip: m.scip}
+	return Row{raw: rowPtr, scip: m.scip}, nil
 }
 
 // AddToSolving adds the row to a model in the Solving stage.

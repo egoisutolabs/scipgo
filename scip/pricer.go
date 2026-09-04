@@ -45,7 +45,8 @@ func pricerStateToC(s PricerResultState) C.SCIP_RESULT {
 
 // PricerPlugin is a wrapper around a SCIP pricer object.
 type PricerPlugin struct {
-	raw *C.SCIP_PRICER
+	raw  *C.SCIP_PRICER
+	scip *Scip // keeps the owning instance alive and identifies it
 }
 
 // Inner returns the internal raw pointer of the pricer.

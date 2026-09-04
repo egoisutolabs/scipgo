@@ -51,7 +51,8 @@ func separationResultToC(r SeparationResult) C.SCIP_RESULT {
 
 // SeparatorPlugin is a wrapper struct for the internal SCIP separator object.
 type SeparatorPlugin struct {
-	raw *C.SCIP_SEPA
+	raw  *C.SCIP_SEPA
+	scip *Scip // keeps the owning instance alive and identifies it
 }
 
 // Inner returns the internal raw pointer of the separator.
@@ -70,7 +71,7 @@ func (s SeparatorPlugin) Priority() int32 { return int32(C.SCIPsepaGetPriority(s
 func (s SeparatorPlugin) Freq() int32 { return int32(C.SCIPsepaGetFreq(s.raw)) }
 
 // SetFreq sets the frequency of the separator.
-func (s *SeparatorPlugin) SetFreq(freq int32) { C.SCIPsepaSetFreq(s.raw, C.int(freq)) }
+func (s SeparatorPlugin) SetFreq(freq int32) { C.SCIPsepaSetFreq(s.raw, C.int(freq)) }
 
 // MaxBoundDist returns the maxbounddist of the separator.
 func (s SeparatorPlugin) MaxBoundDist() float64 { return float64(C.SCIPsepaGetMaxbounddist(s.raw)) }
@@ -80,12 +81,6 @@ func (s SeparatorPlugin) IsDelayed() bool { return C.SCIPsepaIsDelayed(s.raw) !=
 
 // CreateEmptyRow creates an empty LP row.
 func (s SeparatorPlugin) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
-	cn := cString(name)
-	defer freeCString(cn)
-	var row *C.SCIP_ROW
-	if err := retcodeError(C.SCIPcreateEmptyRowSepa(model.scip.raw, &row, s.raw, cn,
-		C.double(lhs), C.double(rhs), cBool(local), cBool(modifiable), cBool(removable))); err != nil {
-		return Row{}, err
-	}
-	return Row{raw: row, scip: model.scip}, nil
+	return NewRow().Name(name).Bounds(lhs, rhs).Local(local).Modifiable(modifiable).Removable(removable).
+		Source(SourceSepa(s)).TryAddTo(model)
 }

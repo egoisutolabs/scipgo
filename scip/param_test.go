@@ -1,6 +1,7 @@
 package scip
 
 import (
+	"errors"
 	"math"
 	"testing"
 )
@@ -42,7 +43,7 @@ func TestSetIntParam(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if err != RetcodeParameterWrongVal {
+	if !errors.Is(err, RetcodeParameterWrongVal) {
 		t.Fatalf("got %v, want ParameterWrongVal", err)
 	}
 }
