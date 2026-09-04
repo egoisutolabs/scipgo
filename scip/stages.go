@@ -75,7 +75,8 @@ var (
 	// SCIPgetVarRedcost, scip_probing.c SCIPgetVarObjProbing, the dive getters.
 	stagesSolving = stages(StageSolving)
 
-	// stagesVarSol: scip_var.c SCIPgetVarSol.
+	// stagesVarSol: scip_var.c SCIPgetVarSol; the solution-value getter takes
+	// the same set when given a NULL solution (the current LP/pseudo solution).
 	stagesVarSol = stages(StagePresolved, StageSolving)
 
 	// stagesColRedcost: scip_lp.c SCIPgetColRedcost.

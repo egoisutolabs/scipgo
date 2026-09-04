@@ -369,7 +369,7 @@ func (m Model) AddCut(cut Row, forceCut bool) bool {
 
 // CurrentVal returns the value of a variable in the current LP/pseudo solution.
 func (m Model) CurrentVal(v Variable) float64 {
-	must(m.query("CurrentVal", stagesOrig))
+	must(m.query("CurrentVal", stagesVarSol))
 	must(m.checkVars("CurrentVal", v))
 	return float64(C.SCIPgetSolVal(m.scip.raw, nil, v.raw))
 }

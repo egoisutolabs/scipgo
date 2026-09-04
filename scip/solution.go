@@ -70,6 +70,7 @@ func (s Solution) IsPartial() bool {
 // that are zero within tolerance.
 func (s Solution) AsNameMap() map[string]float64 {
 	mustLive("Solution.AsNameMap", "Solution", s.raw != nil, s.scip)
+	mustStage("Solution.AsNameMap", s.scip, stagesTrans) // SCIPgetVars
 	vars := C.SCIPgetVars(s.scip.raw)
 	nVars := int(C.SCIPgetNVars(s.scip.raw))
 	m := make(map[string]float64)
@@ -88,6 +89,7 @@ func (s Solution) AsNameMap() map[string]float64 {
 // values that are zero within tolerance.
 func (s Solution) AsIDMap() map[int]float64 {
 	mustLive("Solution.AsIDMap", "Solution", s.raw != nil, s.scip)
+	mustStage("Solution.AsIDMap", s.scip, stagesTrans) // SCIPgetVars
 	vars := C.SCIPgetVars(s.scip.raw)
 	nVars := int(C.SCIPgetNVars(s.scip.raw))
 	m := make(map[int]float64)
@@ -104,6 +106,8 @@ func (s Solution) AsIDMap() map[int]float64 {
 
 // String implements fmt.Stringer, mirroring the Rust Debug impl.
 func (s Solution) String() string {
+	s.live("Solution.String")
+	mustStage("Solution.String", s.scip, stagesOrig) // SCIPgetOrigVars, SCIPgetSolVal
 	var b strings.Builder
 	fmt.Fprintf(&b, "Solution with obj val: %v\n", s.ObjVal())
 	vars := C.SCIPgetOrigVars(s.scip.raw)

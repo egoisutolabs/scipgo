@@ -79,6 +79,15 @@ func TestTryQueriesReportStage(t *testing.T) {
 	if _, err := m.TryObjVal(); asError(t, err).Stage != StageProblem || !errors.Is(err, RetcodeInvalidCall) {
 		t.Fatalf("ObjVal in Problem: %v", err)
 	}
+	if m.BestNode() != nil || m.Children() != nil { // the case that killed the #4 test binary
+		t.Fatal("tree accessors in the problem stage should be nil")
+	}
+	x := m.Vars()[0]
+	expectErrorPanic(t, "CurrentVal in Problem", RetcodeInvalidCall, func() { m.CurrentVal(x) })
+	sol := m.CreateOrigSol()
+	if sol.ObjVal() != 0 || sol.String() == "" || len(sol.AsNameMap()) != 0 {
+		t.Fatal("original solution accessors are legal in the problem stage")
+	}
 	if n, err := m.TryNVars(); err != nil || n != 2 {
 		t.Fatalf("NVars: %d %v", n, err)
 	}

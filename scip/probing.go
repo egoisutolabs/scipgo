@@ -59,7 +59,10 @@ func (p *Prober) TryBacktrack(depth int) error {
 	if err := p.active("Prober.Backtrack"); err != nil {
 		return err
 	}
-	if depth >= p.Depth() {
+	if err := m.query("Prober.Backtrack", stagesProbingDepth); err != nil { // SCIPgetProbingDepth
+		return err
+	}
+	if depth >= int(C.SCIPgetProbingDepth(p.scip.raw)) {
 		return m.invalid("Prober.Backtrack", RetcodeInvalidData, "depth must be below the current probing depth")
 	}
 	return m.call("Prober.Backtrack", C.SCIPbacktrackProbing(p.scip.raw, C.int(depth)))
