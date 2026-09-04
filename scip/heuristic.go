@@ -10,7 +10,6 @@ import "C"
 // Obtain one via Model.FindHeur.
 type HeurPlugin struct {
 	raw  *C.SCIP_HEUR
-	scip *Scip
 }
 
 // Inner returns a pointer to the underlying SCIP_HEUR.

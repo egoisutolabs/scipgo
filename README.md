@@ -122,8 +122,9 @@ model.Add(scip.NewCons().Expression(x.Expr().Mul(y.Expr())).Coef(x, 2).Le(1))
 
 `Heurs`, `Separators` and `Presolvers` list SCIP's built-in plugins;
 `FindHeur`, `FindSeparator` and `FindPresolver` look one up by name. Each
-wrapper exposes its name, priority and statistics, and frequency/priority
-setters let you tune or disable a plugin without touching parameter strings.
+wrapper exposes its name and priority; heuristics and presolvers also report
+call statistics, and heuristics and separators have `SetFreq` so a plugin
+can be tuned or disabled without touching parameter strings.
 
 ## Custom plugins
 

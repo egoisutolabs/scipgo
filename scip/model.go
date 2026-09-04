@@ -279,14 +279,12 @@ func (m Model) FreeTransform() Model {
 
 // FindHeur finds a primal heuristic by its name (e.g. "completesol"), giving
 // access to its runtime statistics.
-func (m Model) FindHeur(name string) (HeurPlugin, bool) { return findHeurOf(m.scip, name) }
-
-func findHeurOf(s *Scip, name string) (HeurPlugin, bool) {
-	raw := s.findHeur(name)
+func (m Model) FindHeur(name string) (HeurPlugin, bool) {
+	raw := m.scip.findHeur(name)
 	if raw == nil {
 		return HeurPlugin{}, false
 	}
-	return HeurPlugin{raw: raw, scip: s}, true
+	return HeurPlugin{raw: raw}, true
 }
 
 // Heurs returns all primal heuristics included in the model.
@@ -295,7 +293,7 @@ func (m Model) Heurs() []HeurPlugin {
 	arr := C.SCIPgetHeurs(m.scip.raw)
 	out := make([]HeurPlugin, 0, n)
 	for i := 0; i < n; i++ {
-		out = append(out, HeurPlugin{raw: cAt(arr, i), scip: m.scip})
+		out = append(out, HeurPlugin{raw: cAt(arr, i)})
 	}
 	return out
 }
