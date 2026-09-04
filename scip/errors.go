@@ -137,13 +137,7 @@ func joinDetail(a, b string) string {
 // exists for SCIP getters that abort the process on a wrong stage instead of
 // returning a retcode.
 func (m Model) requireStage(op string, allowed ...Stage) error {
-	st := m.scip.stage()
-	for _, a := range allowed {
-		if st == a {
-			return nil
-		}
-	}
-	return &Error{Op: op, Stage: st, Retcode: RetcodeInvalidCall, Detail: "not permitted in this stage"}
+	return m.query(op, stages(allowed...))
 }
 
 // checkHandle rejects a handle SCIP must not see: the zero value a failed

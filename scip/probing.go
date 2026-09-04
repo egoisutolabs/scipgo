@@ -14,12 +14,22 @@ type Prober struct {
 
 // NewNode creates a new probing (sub-)node, whose changes can be undone by
 // backtracking to a higher node in the probing path with a call to Backtrack.
-func (p *Prober) NewNode() {
-	mustOK(C.SCIPnewProbingNode(p.scip.raw))
+func (p *Prober) NewNode() { must(p.TryNewNode()) }
+
+// TryNewNode creates a new probing sub node, returning an error on failure.
+func (p *Prober) TryNewNode() error {
+	if err := p.active("Prober.NewNode"); err != nil {
+		return err
+	}
+	return Model{scip: p.scip}.call("Prober.NewNode", C.SCIPnewProbingNode(p.scip.raw))
 }
 
 // Depth returns the current probing depth.
-func (p *Prober) Depth() int { return int(C.SCIPgetProbingDepth(p.scip.raw)) }
+func (p *Prober) Depth() int {
+	must(p.active("Prober.Depth"))
+	mustStage("Prober.Depth", p.scip, stagesProbingDepth)
+	return int(C.SCIPgetProbingDepth(p.scip.raw))
+}
 
 // Backtrack undoes all changes applied in probing up to (and including) the
 // given probing depth.
@@ -32,11 +42,7 @@ func (p *Prober) Backtrack(depth int) { must(p.TryBacktrack(depth)) }
 // checked before it is asked.
 func (p *Prober) active(op string) error {
 	m := Model{scip: p.scip}
-	if err := m.guard(op); err != nil {
-		return err
-	}
-	if err := m.requireStage(op, StageTransformed, StageInitPresolve, StagePresolving, StageExitPresolve,
-		StagePresolved, StageInitSolve, StageSolving, StageSolved, StageExitSolve); err != nil {
+	if err := m.query(op, stagesInProbing); err != nil {
 		return err
 	}
 	if C.SCIPinProbing(p.scip.raw) != 1 {
@@ -60,61 +66,138 @@ func (p *Prober) TryBacktrack(depth int) error {
 }
 
 // ChgVarLb changes the lower bound of a variable in the current probing node.
-func (p *Prober) ChgVarLb(v Variable, newBound float64) {
-	mustOK(C.SCIPchgVarLbProbing(p.scip.raw, v.raw, C.double(newBound)))
+func (p *Prober) ChgVarLb(v Variable, newBound float64) { must(p.TryChgVarLb(v, newBound)) }
+
+// TryChgVarLb is ChgVarLb returning an error instead of panicking.
+func (p *Prober) TryChgVarLb(v Variable, newBound float64) error {
+	m := Model{scip: p.scip}
+	if err := p.active("Prober.ChgVarLb"); err != nil {
+		return err
+	}
+	if err := m.checkVars("Prober.ChgVarLb", v); err != nil {
+		return err
+	}
+	return m.call("Prober.ChgVarLb", C.SCIPchgVarLbProbing(p.scip.raw, v.raw, C.double(newBound)))
 }
 
 // ChgVarUb changes the upper bound of a variable in the current probing node.
-func (p *Prober) ChgVarUb(v Variable, newBound float64) {
-	mustOK(C.SCIPchgVarUbProbing(p.scip.raw, v.raw, C.double(newBound)))
+func (p *Prober) ChgVarUb(v Variable, newBound float64) { must(p.TryChgVarUb(v, newBound)) }
+
+// TryChgVarUb is ChgVarUb returning an error instead of panicking.
+func (p *Prober) TryChgVarUb(v Variable, newBound float64) error {
+	m := Model{scip: p.scip}
+	if err := p.active("Prober.ChgVarUb"); err != nil {
+		return err
+	}
+	if err := m.checkVars("Prober.ChgVarUb", v); err != nil {
+		return err
+	}
+	return m.call("Prober.ChgVarUb", C.SCIPchgVarUbProbing(p.scip.raw, v.raw, C.double(newBound)))
 }
 
 // VarObj retrieves the objective value of a variable in the current probing node.
 func (p *Prober) VarObj(v Variable) float64 {
+	must(p.active("Prober.VarObj"))
+	mustStage("Prober.VarObj", p.scip, stagesSolving)
+	must(Model{scip: p.scip}.checkVars("Prober.VarObj", v))
 	return float64(C.SCIPgetVarObjProbing(p.scip.raw, v.raw))
 }
 
 // FixVar fixes a variable to a value in the current probing node.
-func (p *Prober) FixVar(v Variable, value float64) {
-	mustOK(C.SCIPfixVarProbing(p.scip.raw, v.raw, C.double(value)))
+func (p *Prober) FixVar(v Variable, value float64) { must(p.TryFixVar(v, value)) }
+
+// TryFixVar is FixVar returning an error instead of panicking.
+func (p *Prober) TryFixVar(v Variable, value float64) error {
+	m := Model{scip: p.scip}
+	if err := p.active("Prober.FixVar"); err != nil {
+		return err
+	}
+	if err := m.checkVars("Prober.FixVar", v); err != nil {
+		return err
+	}
+	return m.call("Prober.FixVar", C.SCIPfixVarProbing(p.scip.raw, v.raw, C.double(value)))
 }
 
 // ChgVarObj changes the objective value of a variable in the current probing
 // node.
-func (p *Prober) ChgVarObj(v Variable, newObj float64) {
-	mustOK(C.SCIPchgVarObjProbing(p.scip.raw, v.raw, C.double(newObj)))
+func (p *Prober) ChgVarObj(v Variable, newObj float64) { must(p.TryChgVarObj(v, newObj)) }
+
+// TryChgVarObj is ChgVarObj returning an error instead of panicking.
+func (p *Prober) TryChgVarObj(v Variable, newObj float64) error {
+	m := Model{scip: p.scip}
+	if err := p.active("Prober.ChgVarObj"); err != nil {
+		return err
+	}
+	if err := m.checkVars("Prober.ChgVarObj", v); err != nil {
+		return err
+	}
+	return m.call("Prober.ChgVarObj", C.SCIPchgVarObjProbing(p.scip.raw, v.raw, C.double(newObj)))
 }
 
 // IsObjChanged returns whether the probing subproblem objective function has
 // been changed.
-func (p *Prober) IsObjChanged() bool { return C.SCIPisObjChangedProbing(p.scip.raw) != 0 }
+func (p *Prober) IsObjChanged() bool {
+	must(p.active("Prober.IsObjChanged"))
+	return C.SCIPisObjChangedProbing(p.scip.raw) != 0
+}
 
 // Propagate applies domain propagation on the probing subproblem.
 // maxRounds <= 0 means no limit. Returns (cutoff, nReductions).
 func (p *Prober) Propagate(maxRounds int) (bool, int) {
+	cutoff, n, err := p.TryPropagate(maxRounds)
+	must(err)
+	return cutoff, n
+}
+
+// TryPropagate is Propagate returning an error instead of panicking.
+func (p *Prober) TryPropagate(maxRounds int) (cutoff bool, nReductions int, err error) {
+	if err := p.active("Prober.Propagate"); err != nil {
+		return false, 0, err
+	}
 	rounds := C.int(maxRounds)
 	if maxRounds <= 0 {
 		rounds = -1
 	}
-	var cutoff C.uint
-	var nReductions C.longlong
-	mustOK(C.SCIPpropagateProbing(p.scip.raw, rounds, &cutoff, &nReductions))
-	return cutoff != 0, int(nReductions)
+	var ccutoff C.uint
+	var cn C.longlong
+	if err := (Model{scip: p.scip}).call("Prober.Propagate", C.SCIPpropagateProbing(p.scip.raw, rounds, &ccutoff, &cn)); err != nil {
+		return false, 0, err
+	}
+	return ccutoff != 0, int(cn), nil
 }
 
 // PropagateImplications applies domain propagation of the binary variables
 // fixed at the current probing node that are triggered by the implication
 // graph and the clique table. Returns whether a cutoff was detected.
 func (p *Prober) PropagateImplications() bool {
+	cutoff, err := p.TryPropagateImplications()
+	must(err)
+	return cutoff
+}
+
+// TryPropagateImplications is PropagateImplications returning an error
+// instead of panicking.
+func (p *Prober) TryPropagateImplications() (bool, error) {
+	if err := p.active("Prober.PropagateImplications"); err != nil {
+		return false, err
+	}
 	var cutoff C.uint
-	mustOK(C.SCIPpropagateProbingImplications(p.scip.raw, &cutoff))
-	return cutoff != 0
+	if err := (Model{scip: p.scip}).call("Prober.PropagateImplications", C.SCIPpropagateProbingImplications(p.scip.raw, &cutoff)); err != nil {
+		return false, err
+	}
+	return cutoff != 0, nil
 }
 
 // SolveLp solves the probing subproblem; the solution can be accessed with
 // Model.CurrentVal. iterationLimit <= 0 means no limit. Returns
 // whether a cutoff was detected.
 func (p *Prober) SolveLp(iterationLimit int) (bool, error) {
+	if err := p.active("Prober.SolveLp"); err != nil {
+		return false, err
+	}
+	if err := (Model{scip: p.scip}).query("Prober.SolveLp", stagesSolving); err != nil {
+		return false, err
+	}
 	if !p.scip.isLPConstructed() {
 		if _, err := p.scip.constructLP(); err != nil {
 			return false, err
@@ -139,6 +222,12 @@ func (p *Prober) SolveLp(iterationLimit int) (bool, error) {
 // maxPricingRounds <= 0 means no limit. Returns whether a cutoff was
 // detected.
 func (p *Prober) SolveLpWithPricing(maxPricingRounds int) (bool, error) {
+	if err := p.active("Prober.SolveLpWithPricing"); err != nil {
+		return false, err
+	}
+	if err := (Model{scip: p.scip}).query("Prober.SolveLpWithPricing", stagesSolving); err != nil {
+		return false, err
+	}
 	if !p.scip.isLPConstructed() {
 		if _, err := p.scip.constructLP(); err != nil {
 			return false, err
@@ -163,8 +252,18 @@ func (p *Prober) SolveLpWithPricing(maxPricingRounds int) (bool, error) {
 }
 
 // AddRow adds a row to the probing subproblem.
-func (p *Prober) AddRow(r Row) {
-	mustOK(C.SCIPaddRowProbing(p.scip.raw, r.raw))
+func (p *Prober) AddRow(r Row) { must(p.TryAddRow(r)) }
+
+// TryAddRow is AddRow returning an error instead of panicking.
+func (p *Prober) TryAddRow(r Row) error {
+	m := Model{scip: p.scip}
+	if err := p.active("Prober.AddRow"); err != nil {
+		return err
+	}
+	if err := m.checkHandle("Prober.AddRow", "Row", r.raw != nil, r.scip); err != nil {
+		return err
+	}
+	return m.call("Prober.AddRow", C.SCIPaddRowProbing(p.scip.raw, r.raw))
 }
 
 // End ends probing mode. Must be called exactly once after StartProbing.
@@ -180,7 +279,19 @@ func (p *Prober) TryEnd() error {
 }
 
 // InProbing reports whether SCIP is currently in probing mode.
-func InProbing(m Model) bool { return C.SCIPinProbing(m.scip.raw) != 0 }
+func InProbing(m Model) bool {
+	must(m.guard("InProbing"))
+	if !stagesInProbing.has(m.scip.stage()) {
+		return false
+	}
+	return C.SCIPinProbing(m.scip.raw) != 0
+}
 
 // InDive reports whether SCIP is currently in diving mode.
-func InDive(m Model) bool { return C.SCIPinDive(m.scip.raw) != 0 }
+func InDive(m Model) bool {
+	must(m.guard("InDive"))
+	if !stagesInDive.has(m.scip.stage()) {
+		return false
+	}
+	return C.SCIPinDive(m.scip.raw) != 0
+}

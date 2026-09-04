@@ -95,10 +95,15 @@ if errors.As(err, &cp) { /* a plugin panicked: cp.Plugin, cp.Value */ }
 ```
 
 `ReadProb`, `AddSol`, `Write` and the `Set*Param` family return errors under
-their plain names. `Try*` calls on a freed `Model` report an error in
-`StageFree` rather than crashing. Not covered: the mutators on `Prober`,
-`Diver` and `Row` panic with a `Retcode` on failure, and query methods such
-as `Status` or `NVars` must not be called after `Free`.
+their plain names. Queries (`Status`, `NVars`, `ObjVal`, the tree and LP
+accessors, and every method on `Variable`, `Constraint`, `Solution`, `Node`,
+`Row` and `Col`) check the stage SCIP documents for them and the model's
+liveness first, and panic with an `*Error` instead of letting SCIP abort the
+process; the ones a service calls defensively (`TryStatus`, `TryObjVal`,
+`TryBestSol`, `TryNVars`, `TryConss`, ...) have error-returning forms. The
+optional tree accessors (`BestNode`, `Leaves`, ...) return nil outside the
+solving stage. Mutators on `Prober`, `Diver`, `Row`, `Solution` and `Node`
+have `Try*` siblings too.
 
 ## Nonlinear constraints
 

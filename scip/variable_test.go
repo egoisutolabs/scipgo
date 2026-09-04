@@ -56,9 +56,12 @@ func TestVarSolVal(t *testing.T) {
 	model := MinimalModel()
 	x := model.AddVar(0, 1, 1, "x", VarTypeBinary)
 	model.AddCons([]Variable{x}, []float64{1}, 1, 1, "cons1")
-	model.Solve()
-	if x.SolVal() != 1 {
-		t.Fatalf("sol val %v", x.SolVal())
+	solved := model.Solve()
+	// SCIPgetVarSol is only defined while presolved or solving; after the
+	// solve the value comes from the incumbent.
+	sol, ok := solved.BestSol()
+	if !ok || sol.Val(x) != 1 {
+		t.Fatalf("sol val %v", sol.Val(x))
 	}
 }
 

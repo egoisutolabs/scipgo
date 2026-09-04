@@ -5,36 +5,106 @@ package scip
 */
 import "C"
 
-// Vars returns all variables in the optimization model.
-func (m Model) Vars() []Variable { return scipVars(m.scip, false) }
+// TryVars returns all variables of the (transformed, once it exists) problem.
+func (m Model) TryVars() ([]Variable, error) {
+	if err := m.query("Vars", stagesTrans); err != nil {
+		return nil, err
+	}
+	return scipVars(m.scip, false), nil
+}
+
+// Vars returns all variables in the optimization model. It panics with
+// *Error on a freed model or outside the problem-to-solved stages.
+func (m Model) Vars() []Variable {
+	v, err := m.TryVars()
+	must(err)
+	return v
+}
 
 // OrigVars returns all original variables in the optimization model.
-func (m Model) OrigVars() []Variable { return scipVars(m.scip, true) }
+func (m Model) OrigVars() []Variable {
+	must(m.query("OrigVars", stagesOrig))
+	return scipVars(m.scip, true)
+}
 
 // Var returns the variable with the given ID, if it exists.
-func (m Model) Var(varID VarId) (Variable, bool) { return varByID(m.scip, varID) }
+func (m Model) Var(varID VarId) (Variable, bool) {
+	must(m.query("Var", stagesTrans))
+	return varByID(m.scip, varID)
+}
+
+// TryNVars returns the number of variables.
+func (m Model) TryNVars() (int, error) {
+	if err := m.query("NVars", stagesTrans); err != nil {
+		return 0, err
+	}
+	return m.scip.nVars(), nil
+}
 
 // NVars returns the number of variables in the optimization model.
-func (m Model) NVars() int { return m.scip.nVars() }
+func (m Model) NVars() int {
+	n, err := m.TryNVars()
+	must(err)
+	return n
+}
+
+// TryNConss returns the number of constraints.
+func (m Model) TryNConss() (int, error) {
+	if err := m.query("NConss", stagesConss); err != nil {
+		return 0, err
+	}
+	return m.scip.nConss(), nil
+}
 
 // NConss returns the number of constraints in the optimization model.
-func (m Model) NConss() int { return m.scip.nConss() }
+func (m Model) NConss() int {
+	n, err := m.TryNConss()
+	must(err)
+	return n
+}
 
 // FindCons finds a constraint by name.
-func (m Model) FindCons(name string) (Constraint, bool) { return findConsOf(m.scip, name) }
+func (m Model) FindCons(name string) (Constraint, bool) {
+	must(m.query("FindCons", stagesOrig))
+	return findConsOf(m.scip, name)
+}
+
+// TryConss returns all constraints.
+func (m Model) TryConss() ([]Constraint, error) {
+	if err := m.query("Conss", stagesConss); err != nil {
+		return nil, err
+	}
+	return scipConss(m.scip), nil
+}
 
 // Conss returns all constraints in the optimization model.
-func (m Model) Conss() []Constraint { return scipConss(m.scip) }
+func (m Model) Conss() []Constraint {
+	c, err := m.TryConss()
+	must(err)
+	return c
+}
 
 // ConsIsModifiable returns the modifiable flag of the given constraint.
-func (m Model) ConsIsModifiable(c Constraint) bool { return m.scip.consIsModifiable(c) }
+func (m Model) ConsIsModifiable(c Constraint) bool {
+	must(m.guard("ConsIsModifiable"))
+	must(m.checkCons("ConsIsModifiable", c))
+	return m.scip.consIsModifiable(c)
+}
 
 // ConsIsRemovable returns the removable flag of the given constraint.
-func (m Model) ConsIsRemovable(c Constraint) bool { return m.scip.consIsRemovable(c) }
+func (m Model) ConsIsRemovable(c Constraint) bool {
+	must(m.guard("ConsIsRemovable"))
+	must(m.checkCons("ConsIsRemovable", c))
+	return m.scip.consIsRemovable(c)
+}
 
 // ConsIsSeparated returns whether the constraint should be separated during
 // LP processing.
-func (m Model) ConsIsSeparated(c Constraint) bool { return m.scip.consIsSeparated(c) }
+func (m Model) ConsIsSeparated(c Constraint) bool {
+	must(m.guard("ConsIsSeparated"))
+	must(m.checkCons("ConsIsSeparated", c))
+	return m.scip.consIsSeparated(c)
+}
 
 // Write writes the problem to a file using SCIP's writer.
 //

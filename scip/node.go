@@ -17,16 +17,26 @@ type Node struct {
 func (n Node) Inner() *C.SCIP_NODE { return n.raw }
 
 // Number returns the number of the node.
-func (n Node) Number() int { return int(C.SCIPnodeGetNumber(n.raw)) }
+func (n Node) Number() int {
+	mustLive("Node.Number", "Node", n.raw != nil, n.scip)
+	return int(C.SCIPnodeGetNumber(n.raw))
+}
 
 // Depth returns the depth of the node in the branch-and-bound tree.
-func (n Node) Depth() int { return int(C.SCIPnodeGetDepth(n.raw)) }
+func (n Node) Depth() int {
+	mustLive("Node.Depth", "Node", n.raw != nil, n.scip)
+	return int(C.SCIPnodeGetDepth(n.raw))
+}
 
 // LowerBound returns the lower bound of the node.
-func (n Node) LowerBound() float64 { return float64(C.SCIPnodeGetLowerbound(n.raw)) }
+func (n Node) LowerBound() float64 {
+	mustLive("Node.LowerBound", "Node", n.raw != nil, n.scip)
+	return float64(C.SCIPnodeGetLowerbound(n.raw))
+}
 
 // Parent returns the parent of the node and false if the node is the root node.
 func (n Node) Parent() (Node, bool) {
+	mustLive("Node.Parent", "Node", n.raw != nil, n.scip)
 	parent := C.SCIPnodeGetParent(n.raw)
 	if parent == nil {
 		return Node{}, false
@@ -35,21 +45,46 @@ func (n Node) Parent() (Node, bool) {
 }
 
 // NChildren returns the number of children of the node.
-func (n Node) NChildren() int { return int(C.SCIPgetNChildren(n.scip.raw)) }
+func (n Node) NChildren() int {
+	mustLive("Node.NChildren", "Node", n.raw != nil, n.scip)
+	mustLive("Node.NChildren", "Node", n.raw != nil, n.scip)
+	if !stagesChildren.has(n.scip.stage()) {
+		return 0
+	}
+	return int(C.SCIPgetNChildren(n.scip.raw))
+}
 
 // Children returns the children of the node.
 func (n Node) Children() []Node {
-	numChildren := n.NChildren()
+	mustLive("Node.Children", "Node", n.raw != nil, n.scip)
+	c, err := n.TryChildren()
+	must(err)
+	return c
+}
+
+// TryChildren is Children returning an error instead of panicking; outside
+// the solving stage there are no children and it returns nil, nil.
+func (n Node) TryChildren() ([]Node, error) {
+	m := Model{scip: n.scip}
+	if err := m.checkHandle("Node.Children", "Node", n.raw != nil, n.scip); err != nil {
+		return nil, err
+	}
+	if !stagesChildren.has(n.scip.stage()) {
+		return nil, nil
+	}
+	numChildren := int(C.SCIPgetNChildren(n.scip.raw))
 	if numChildren == 0 {
-		return nil
+		return nil, nil
 	}
 	var childNodesPtr **C.SCIP_NODE
-	mustOK(C.SCIPgetChildren(n.scip.raw, &childNodesPtr, nil))
+	if err := m.call("Node.Children", C.SCIPgetChildren(n.scip.raw, &childNodesPtr, nil)); err != nil {
+		return nil, err
+	}
 	children := make([]Node, 0, numChildren)
 	for i := 0; i < numChildren; i++ {
 		children = append(children, Node{raw: cNodeAt(childNodesPtr, i), scip: n.scip})
 	}
-	return children
+	return children, nil
 }
 
 // cAt returns the i-th element of a C array, given a pointer to its first

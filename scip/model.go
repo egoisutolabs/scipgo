@@ -286,6 +286,7 @@ func (m Model) FreeTransform() Model {
 // FindHeur finds a primal heuristic by its name (e.g. "completesol"), giving
 // access to its runtime statistics.
 func (m Model) FindHeur(name string) (HeurPlugin, bool) {
+	must(m.guard("FindHeur"))
 	raw := m.scip.findHeur(name)
 	if raw == nil {
 		return HeurPlugin{}, false
@@ -295,6 +296,7 @@ func (m Model) FindHeur(name string) (HeurPlugin, bool) {
 
 // Heurs returns all primal heuristics included in the model.
 func (m Model) Heurs() []HeurPlugin {
+	must(m.guard("Heurs"))
 	n := int(C.SCIPgetNHeurs(m.scip.raw))
 	arr := C.SCIPgetHeurs(m.scip.raw)
 	out := make([]HeurPlugin, 0, n)
@@ -306,6 +308,7 @@ func (m Model) Heurs() []HeurPlugin {
 
 // Separators returns all separators included in the model.
 func (m Model) Separators() []SeparatorPlugin {
+	must(m.guard("Separators"))
 	n := int(C.SCIPgetNSepas(m.scip.raw))
 	arr := C.SCIPgetSepas(m.scip.raw)
 	out := make([]SeparatorPlugin, 0, n)
@@ -317,6 +320,7 @@ func (m Model) Separators() []SeparatorPlugin {
 
 // FindSeparator finds a separator by name.
 func (m Model) FindSeparator(name string) (SeparatorPlugin, bool) {
+	must(m.guard("FindSeparator"))
 	raw := m.scip.findSepa(name)
 	if raw == nil {
 		return SeparatorPlugin{}, false
@@ -326,6 +330,7 @@ func (m Model) FindSeparator(name string) (SeparatorPlugin, bool) {
 
 // Presolvers returns all presolvers included in the model.
 func (m Model) Presolvers() []PresolverPlugin {
+	must(m.guard("Presolvers"))
 	n := int(C.SCIPgetNPresols(m.scip.raw))
 	arr := C.SCIPgetPresols(m.scip.raw)
 	out := make([]PresolverPlugin, 0, n)
@@ -337,6 +342,7 @@ func (m Model) Presolvers() []PresolverPlugin {
 
 // FindPresolver finds a presolver by name.
 func (m Model) FindPresolver(name string) (PresolverPlugin, bool) {
+	must(m.guard("FindPresolver"))
 	raw := m.scip.findPresol(name)
 	if raw == nil {
 		return PresolverPlugin{}, false
@@ -347,6 +353,7 @@ func (m Model) FindPresolver(name string) (PresolverPlugin, bool) {
 // FindNodesel finds an included node selector by its name (e.g. "bfs"),
 // giving access to its priorities and statistics.
 func (m Model) FindNodesel(name string) (NodeselPlugin, bool) {
+	must(m.guard("FindNodesel"))
 	raw := m.scip.findNodesel(name)
 	if raw == nil {
 		return NodeselPlugin{}, false
@@ -564,11 +571,27 @@ func (m Model) Inner() *C.SCIP { return m.scip.raw }
 // ScipPtr is an alias for Inner.
 func (m Model) ScipPtr() *C.SCIP { return m.Inner() }
 
-// Status returns the status of the optimization model.
-func (m Model) Status() Status { return m.scip.status() }
+// TryStatus returns the status of the optimization model.
+func (m Model) TryStatus() (Status, error) {
+	if err := m.guard("Status"); err != nil {
+		return StatusUnknown, err
+	}
+	return m.scip.status(), nil
+}
+
+// Status returns the status of the optimization model. It panics with *Error
+// on a freed model.
+func (m Model) Status() Status {
+	s, err := m.TryStatus()
+	must(err)
+	return s
+}
 
 // PrintVersion prints the version of SCIP used by the optimization model.
-func (m Model) PrintVersion() { m.scip.printVersion() }
+func (m Model) PrintVersion() {
+	must(m.guard("PrintVersion"))
+	m.scip.printVersion()
+}
 
 // ------------------------------------------------------------- parameters
 
@@ -803,19 +826,37 @@ func (m Model) SetHeuristics(heuristics ParamSetting) Model {
 // ------------------------------------------------------------- numerics
 
 // Eq checks equality using tolerance.
-func (m Model) Eq(a, b float64) bool { return C.SCIPisEQ(m.scip.raw, C.double(a), C.double(b)) != 0 }
+func (m Model) Eq(a, b float64) bool {
+	must(m.guard("Eq"))
+	return C.SCIPisEQ(m.scip.raw, C.double(a), C.double(b)) != 0
+}
 
 // Lt checks if a is less than b using tolerance.
-func (m Model) Lt(a, b float64) bool { return C.SCIPisLT(m.scip.raw, C.double(a), C.double(b)) != 0 }
+func (m Model) Lt(a, b float64) bool {
+	must(m.guard("Lt"))
+	return C.SCIPisLT(m.scip.raw, C.double(a), C.double(b)) != 0
+}
 
 // Le checks if a is less than or equal to b using tolerance.
-func (m Model) Le(a, b float64) bool { return C.SCIPisLE(m.scip.raw, C.double(a), C.double(b)) != 0 }
+func (m Model) Le(a, b float64) bool {
+	must(m.guard("Le"))
+	return C.SCIPisLE(m.scip.raw, C.double(a), C.double(b)) != 0
+}
 
 // Gt checks if a is greater than b using tolerance.
-func (m Model) Gt(a, b float64) bool { return C.SCIPisGT(m.scip.raw, C.double(a), C.double(b)) != 0 }
+func (m Model) Gt(a, b float64) bool {
+	must(m.guard("Gt"))
+	return C.SCIPisGT(m.scip.raw, C.double(a), C.double(b)) != 0
+}
 
 // Ge checks if a is greater than or equal to b using tolerance.
-func (m Model) Ge(a, b float64) bool { return C.SCIPisGE(m.scip.raw, C.double(a), C.double(b)) != 0 }
+func (m Model) Ge(a, b float64) bool {
+	must(m.guard("Ge"))
+	return C.SCIPisGE(m.scip.raw, C.double(a), C.double(b)) != 0
+}
 
 // Eps returns SCIP's epsilon value.
-func (m Model) Eps() float64 { return float64(C.SCIPepsilon(m.scip.raw)) }
+func (m Model) Eps() float64 {
+	must(m.guard("Eps"))
+	return float64(C.SCIPepsilon(m.scip.raw))
+}
