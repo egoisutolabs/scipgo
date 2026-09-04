@@ -159,6 +159,9 @@ func (m Model) addLocalCons(op string, node *Node, cons ConsBuilder) (Constraint
 	if cons.expr != nil {
 		return Constraint{}, m.invalid(op, RetcodeInvalidCall, "nonlinear constraints cannot be added locally")
 	}
+	if node != nil && node.raw == nil {
+		return Constraint{}, m.invalid(op, RetcodeInvalidData, "zero node")
+	}
 	if err := m.checkVars(op, cons.vars()...); err != nil {
 		return Constraint{}, err
 	}

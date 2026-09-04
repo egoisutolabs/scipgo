@@ -289,3 +289,39 @@ func TestZeroHandlesRejected(t *testing.T) {
 		t.Error("zero variable expression string")
 	}
 }
+
+func TestSelfReviewZeroNodesAndNilSolution(t *testing.T) {
+	m := createTestModel(t)
+	defer m.Free()
+	x := m.Vars()[0]
+	if err := m.TrySetUbNode(&Node{}, x, 0); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("zero node: %v", err)
+	}
+	if _, err := m.TryAddConsNode(&Node{}, NewCons().Coef(x, 1).Le(1)); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("zero node cons: %v", err)
+	}
+	if err := m.AddSol(nil); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("nil solution: %v", err)
+	}
+	sol := m.CreateOrigSol()
+	_ = m.AddSol(&sol) // consumes
+	if err := m.AddSol(&sol); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("consumed solution: %v", err)
+	}
+	p := &Prober{scip: m.scip} // not probing: the depth getter would abort
+	if err := p.TryBacktrack(0); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("backtrack outside probing: %v", err)
+	}
+	if err := p.TryEnd(); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("end outside probing: %v", err)
+	}
+}
+
+func TestDiverEndOutsideSolving(t *testing.T) {
+	m := createTestModel(t)
+	defer m.Free()
+	d := &Diver{scip: m.scip}
+	if err := d.TryEnd(); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("got %v", err)
+	}
+}

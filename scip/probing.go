@@ -27,8 +27,29 @@ func (p *Prober) Backtrack(depth int) { must(p.TryBacktrack(depth)) }
 
 // TryBacktrack undoes all probing changes above the given depth, which must be
 // below the current probing depth.
+// active rejects use of the prober when SCIP is not probing. SCIPinProbing
+// itself aborts outside the transformed-to-exit-solve stages, so the stage is
+// checked before it is asked.
+func (p *Prober) active(op string) error {
+	m := Model{scip: p.scip}
+	if err := m.guard(op); err != nil {
+		return err
+	}
+	if err := m.requireStage(op, StageTransformed, StageInitPresolve, StagePresolving, StageExitPresolve,
+		StagePresolved, StageInitSolve, StageSolving, StageSolved, StageExitSolve); err != nil {
+		return err
+	}
+	if C.SCIPinProbing(p.scip.raw) != 1 {
+		return m.invalid(op, RetcodeInvalidCall, "SCIP is not in probing mode")
+	}
+	return nil
+}
+
 func (p *Prober) TryBacktrack(depth int) error {
 	m := Model{scip: p.scip}
+	if err := p.active("Prober.Backtrack"); err != nil {
+		return err
+	}
 	if depth >= p.Depth() {
 		return m.invalid("Prober.Backtrack", RetcodeInvalidData, "depth must be below the current probing depth")
 	}
@@ -149,8 +170,8 @@ func (p *Prober) End() { must(p.TryEnd()) }
 // TryEnd ends probing mode, returning an error if SCIP is not probing.
 func (p *Prober) TryEnd() error {
 	m := Model{scip: p.scip}
-	if C.SCIPinProbing(p.scip.raw) != 1 {
-		return m.invalid("Prober.End", RetcodeInvalidCall, "SCIP is not in probing mode")
+	if err := p.active("Prober.End"); err != nil {
+		return err
 	}
 	return m.call("Prober.End", C.SCIPendProbing(p.scip.raw))
 }
