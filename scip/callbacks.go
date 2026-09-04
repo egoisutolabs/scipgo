@@ -423,12 +423,13 @@ func callPricer(scip *C.SCIP, pricer *C.SCIP_PRICER, lowerbound *C.double, stope
 	}
 
 	if farkas && res.State == PricerResultStateStopEarly {
-		stashPanic(scip, "", "farkas pricing should never stop early as LP would remain infeasible")
+		stashPanic(scip, "pricer", "farkas pricing should never stop early as LP would remain infeasible")
 		return C.SCIP_ERROR
 	}
 
 	if res.State == PricerResultStateFoundColumns {
 		if nVarsBefore >= C.SCIPgetNVars(scip) {
+			stashPanic(scip, "pricer", "pricer reported FoundColumns but added no variables")
 			return C.SCIP_ERROR
 		}
 	}

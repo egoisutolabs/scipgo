@@ -70,7 +70,7 @@ func (s SeparatorPlugin) Priority() int32 { return int32(C.SCIPsepaGetPriority(s
 func (s SeparatorPlugin) Freq() int32 { return int32(C.SCIPsepaGetFreq(s.raw)) }
 
 // SetFreq sets the frequency of the separator.
-func (s *SeparatorPlugin) SetFreq(freq int32) { C.SCIPsepaSetFreq(s.raw, C.int(freq)) }
+func (s SeparatorPlugin) SetFreq(freq int32) { C.SCIPsepaSetFreq(s.raw, C.int(freq)) }
 
 // MaxBoundDist returns the maxbounddist of the separator.
 func (s SeparatorPlugin) MaxBoundDist() float64 { return float64(C.SCIPsepaGetMaxbounddist(s.raw)) }
