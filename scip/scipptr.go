@@ -10,6 +10,7 @@ import (
 	"math"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -18,11 +19,56 @@ import (
 type Scip struct {
 	raw  *C.SCIP
 	weak bool
+	// owner is the strong instance a weak (callback) wrapper stands for, so
+	// liveness is judged by instance identity, not by a pointer that is
+	// never cleared and may be reused by a later SCIPcreate.
+	owner *Scip
+	// transGen counts FreeTransform calls; handles into the transformed
+	// problem record it at creation and are dead once it moves on.
+	transGen uint64
 	// Variables added during solving, to be released after solving.
 	varsAddedInSolving []*C.SCIP_VAR
 	mu                 sync.Mutex
-	freed              bool
+	freed              atomic.Bool
 }
+
+// instances maps every live strong instance by its raw pointer, so weak
+// wrappers created inside callbacks can find the owner they belong to.
+var instances = struct {
+	sync.Mutex
+	m map[*C.SCIP]*Scip
+}{m: make(map[*C.SCIP]*Scip)}
+
+func instanceOf(raw *C.SCIP) *Scip {
+	instances.Lock()
+	defer instances.Unlock()
+	return instances.m[raw]
+}
+
+// root returns the strong instance behind s (itself, or a weak wrapper's owner).
+func (s *Scip) root() *Scip {
+	if s != nil && s.weak && s.owner != nil {
+		return s.owner
+	}
+	return s
+}
+
+// alive reports whether the instance behind s still exists. A weak wrapper
+// is alive while its owner is and, for a sub-SCIP copy, while SCIP has not
+// freed that copy (its plugins' free callbacks drop it from copyParents).
+func (s *Scip) alive() bool {
+	r := s.root()
+	if r == nil || r.raw == nil || r.freed.Load() {
+		return false
+	}
+	if s.weak && s.raw != r.raw && !isCopy(s.raw) {
+		return false
+	}
+	return true
+}
+
+// gen is the current transform generation of the instance behind s.
+func (s *Scip) gen() uint64 { return s.root().transGen }
 
 // newScip creates a new SCIP instance and registers a finalizer that frees it
 // when it becomes unreachable (mirroring the Rust Drop impl).
@@ -33,6 +79,9 @@ func newScip() (*Scip, error) {
 	}
 	s := &Scip{raw: scipPtr}
 	forgetCopy(scipPtr) // the address may have belonged to a freed sub-SCIP
+	instances.Lock()
+	instances.m[scipPtr] = s
+	instances.Unlock()
 	runtime.SetFinalizer(s, (*Scip).release)
 	return s, nil
 }
@@ -48,12 +97,15 @@ func (s *Scip) release() {
 // failures so SCIPfree always runs, and returns the first error seen.
 func (s *Scip) free() error {
 	s.mu.Lock()
-	if s.freed || s.weak {
+	if s.freed.Load() || s.weak {
 		s.mu.Unlock()
 		return nil
 	}
-	s.freed = true
+	s.freed.Store(true)
 	s.mu.Unlock()
+	instances.Lock()
+	delete(instances.m, s.raw)
+	instances.Unlock()
 
 	raw := s.raw
 	var firstErr error
@@ -938,7 +990,13 @@ func (s *Scip) addRow(row Row, forceCut bool) (bool, error) {
 	return infeasible != 0, nil
 }
 
-func (s *Scip) freeTransform() error { return retcodeError(C.SCIPfreeTransform(s.raw)) }
+func (s *Scip) freeTransform() error {
+	err := retcodeError(C.SCIPfreeTransform(s.raw))
+	if err == nil {
+		s.root().transGen++ // every transformed handle is now dead
+	}
+	return err
+}
 
 // ------------------------------------------------------------- tree nodes
 

@@ -105,6 +105,16 @@ optional tree accessors (`BestNode`, `Leaves`, ...) return nil outside the
 solving stage. Mutators on `Prober`, `Diver`, `Row`, `Solution` and `Node`
 have `Try*` siblings too.
 
+Liveness is judged by instance, not by pointer: a handle from a freed
+model, a handle into a transformed problem that `FreeTransform` has since
+released, a handle passed to a different model, and a handle minted inside
+a plugin callback after its model is gone all produce an `*Error`. Original
+variables, constraints and solutions survive `FreeTransform`; transformed
+ones, rows, columns and nodes do not. `Variable.SolVal` is defined only while
+presolved or solving, as SCIP defines it; read values after a solve from
+`BestSol`. `Redcost` on a variable or column reports unavailable unless the
+current node's LP is solved.
+
 ## Nonlinear constraints
 
 Build an expression tree from variables and constants and add it as a

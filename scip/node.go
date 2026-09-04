@@ -11,44 +11,56 @@ import "unsafe"
 type Node struct {
 	raw  *C.SCIP_NODE
 	scip *Scip
+	gen  uint64 // transform generation at creation; see handleErr
 }
+
+func (s *Scip) newNode(raw *C.SCIP_NODE) Node {
+	h := Node{raw: raw, scip: s}
+	if raw != nil {
+		h.gen = s.gen()
+	}
+	return h
+}
+
+// live panics with *Error unless the handle is usable; see handleErr.
+func (h Node) live(op string) { mustLive(op, "Node", h.raw != nil, h.scip, h.gen, false) }
 
 // Inner returns the raw pointer to the underlying SCIP_NODE.
 func (n Node) Inner() *C.SCIP_NODE { return n.raw }
 
 // Number returns the number of the node.
 func (n Node) Number() int {
-	mustLive("Node.Number", "Node", n.raw != nil, n.scip)
+	n.live("Node.Number")
 	return int(C.SCIPnodeGetNumber(n.raw))
 }
 
 // Depth returns the depth of the node in the branch-and-bound tree.
 func (n Node) Depth() int {
-	mustLive("Node.Depth", "Node", n.raw != nil, n.scip)
+	n.live("Node.Depth")
 	return int(C.SCIPnodeGetDepth(n.raw))
 }
 
 // LowerBound returns the lower bound of the node.
 func (n Node) LowerBound() float64 {
-	mustLive("Node.LowerBound", "Node", n.raw != nil, n.scip)
+	n.live("Node.LowerBound")
 	return float64(C.SCIPnodeGetLowerbound(n.raw))
 }
 
 // Parent returns the parent of the node and false if the node is the root node.
 func (n Node) Parent() (Node, bool) {
-	mustLive("Node.Parent", "Node", n.raw != nil, n.scip)
+	n.live("Node.Parent")
 	parent := C.SCIPnodeGetParent(n.raw)
 	if parent == nil {
 		return Node{}, false
 	}
-	return Node{raw: parent, scip: n.scip}, true
+	return n.scip.newNode(parent), true
 }
 
 // NChildren returns the number of children of the node.
 func (n Node) NChildren() int {
-	mustLive("Node.NChildren", "Node", n.raw != nil, n.scip)
-	mustLive("Node.NChildren", "Node", n.raw != nil, n.scip)
-	if !stagesChildren.has(n.scip.stage()) {
+	n.live("Node.NChildren")
+	// SCIPgetNChildren reports the focus node's children only.
+	if !stagesSolvingSolved.has(n.scip.stage()) || C.SCIPgetFocusNode(n.scip.raw) != n.raw {
 		return 0
 	}
 	return int(C.SCIPgetNChildren(n.scip.raw))
@@ -56,21 +68,26 @@ func (n Node) NChildren() int {
 
 // Children returns the children of the node.
 func (n Node) Children() []Node {
-	mustLive("Node.Children", "Node", n.raw != nil, n.scip)
+	n.live("Node.Children")
 	c, err := n.TryChildren()
 	must(err)
 	return c
 }
 
-// TryChildren is Children returning an error instead of panicking; outside
-// the solving stage there are no children and it returns nil, nil.
+// TryChildren is Children returning an error instead of panicking. SCIP only
+// exposes the focus node's children, so any other node is rejected; outside
+// the solving stages there are none and it returns nil, nil.
 func (n Node) TryChildren() ([]Node, error) {
 	m := Model{scip: n.scip}
-	if err := m.checkHandle("Node.Children", "Node", n.raw != nil, n.scip); err != nil {
+	if err := m.checkHandle("Node.Children", "Node", n.raw != nil, n.scip, n.gen, false); err != nil {
 		return nil, err
 	}
-	if !stagesChildren.has(n.scip.stage()) {
+	if !stagesSolvingSolved.has(n.scip.stage()) {
 		return nil, nil
+	}
+	// SCIPgetChildren has no node argument: it lists the focus node's children.
+	if C.SCIPgetFocusNode(n.scip.raw) != n.raw {
+		return nil, m.invalid("Node.Children", RetcodeInvalidData, "children are only available for the focus node")
 	}
 	numChildren := int(C.SCIPgetNChildren(n.scip.raw))
 	if numChildren == 0 {

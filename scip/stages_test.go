@@ -2,6 +2,7 @@ package scip
 
 import (
 	"errors"
+	"sync/atomic"
 	"testing"
 )
 
@@ -94,8 +95,8 @@ func TestTryQueriesReportStage(t *testing.T) {
 	if _, _, err := m.TryBestSol(); err != nil {
 		t.Fatalf("BestSol in Problem should be legal: %v", err)
 	}
-	if _, _, err := NewModel().TryBestSol(); err != nil {
-		t.Fatalf("BestSol in Init is legal per scip_sol.c: %v", err)
+	if _, _, err := NewModel().TryBestSol(); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("BestSol in Init reads SCIPgetNSols first, which is not permitted: %v", err)
 	}
 	if _, err := m.TryNNodes(); err != nil {
 		t.Fatalf("NNodes in Problem: %v", err)
@@ -193,5 +194,121 @@ func TestMutatorTryFormsValidate(t *testing.T) {
 	}
 	if err := sol.TrySetVal(x, 1); err != nil {
 		t.Errorf("SetVal valid: %v", err)
+	}
+}
+
+func TestFreeTransformInvalidatesTransformedHandles(t *testing.T) {
+	m := createTestModel(t)
+	defer m.Free()
+	orig := m.Vars()[0] // original-problem variable
+	solved := m.Solve()
+	trans := solved.Vars()[0] // transformed variable
+	sol, ok := solved.BestSol()
+	if !ok || trans.IsOriginal() {
+		t.Fatal("expected a transformed variable and an incumbent")
+	}
+	solved.FreeTransform()
+	expectErrorPanic(t, "transformed var after FreeTransform", RetcodeInvalidCall, func() { trans.Name() })
+	expectErrorPanic(t, "solution after FreeTransform", RetcodeInvalidCall, func() { sol.ObjVal() })
+	if err := sol.TrySetVal(orig, 1); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("Try form should agree: %v", err)
+	}
+	if orig.Name() != "x1" {
+		t.Fatal("original variable must survive FreeTransform")
+	}
+	if _, err := m.TryAddCons([]Variable{trans}, []float64{1}, 0, 1, "stale"); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("stale transformed handle as argument: %v", err)
+	}
+	// a fresh solve issues fresh handles
+	if v := m.Solve().Vars()[0]; v.Name() == "" {
+		t.Fatal("handles from the new transform must work")
+	}
+}
+
+type keepingHeur struct {
+	model *Model
+	v     *Variable
+}
+
+func (h *keepingHeur) Execute(model Model, _ HeurTiming, _ bool) HeurResult {
+	if h.model == nil {
+		m := model
+		v := model.Vars()[0]
+		h.model, h.v = &m, &v
+		_ = v.SolVal() // legal while solving; must not panic
+	}
+	return HeurResultDidNotRun
+}
+
+func TestCallbackHandlesDieWithModel(t *testing.T) {
+	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
+	h := &keepingHeur{}
+	m.Add(NewHeur(h).Name("keeper"))
+	m.Solve()
+	if h.model == nil {
+		t.Fatal("heuristic never ran")
+	}
+	if err := h.model.TryFree(); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("callback model must not be freeable: %v", err)
+	}
+	if _, err := h.model.TryStatus(); err != nil {
+		t.Fatalf("callback model is usable while the owner lives: %v", err)
+	}
+	m.Free()
+	if _, err := h.model.TryStatus(); asError(t, err).Stage != StageFree {
+		t.Fatal("callback model must die with its owner")
+	}
+	expectErrorPanic(t, "callback variable after Free", RetcodeInvalidCall, func() { h.v.Name() })
+	// an unrelated new model must not resurrect the stale handle
+	other := createTestModel(t)
+	defer other.Free()
+	if _, err := other.TryAddCons([]Variable{*h.v}, []float64{1}, 0, 1, "z"); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("stale callback handle into a new model: %v", err)
+	}
+}
+
+func TestPluginWrappersOnFreedModel(t *testing.T) {
+	m := NewModel().HideOutput().IncludeDefaultPlugins()
+	hs := m.Heurs()
+	sep, _ := m.FindSeparator("gomory")
+	m.Free()
+	expectErrorPanic(t, "HeurPlugin.Name", RetcodeInvalidCall, func() { hs[0].Name() })
+	expectErrorPanic(t, "HeurPlugin.SetFreq", RetcodeInvalidCall, func() { hs[0].SetFreq(1) })
+	expectErrorPanic(t, "SeparatorPlugin.Freq", RetcodeInvalidCall, func() { sep.Freq() })
+	expectErrorPanic(t, "zero HeurPlugin", RetcodeInvalidData, func() { (HeurPlugin{}).Name() })
+}
+
+type childrenProbe struct {
+	nonFocus atomic.Int32
+	solVal   atomic.Int32
+}
+
+func (p *childrenProbe) Execute(model Model, _ HeurTiming, _ bool) HeurResult {
+	focus := model.FocusNode()
+	if parent, ok := focus.Parent(); ok {
+		if _, err := parent.TryChildren(); errors.Is(err, RetcodeInvalidData) {
+			p.nonFocus.Add(1)
+		}
+	}
+	for _, v := range model.Vars() {
+		_ = v.SolVal()
+		if col, ok := v.Col(); ok {
+			col.Redcost() // must never abort, LP or no LP
+		}
+		v.Redcost()
+	}
+	p.solVal.Add(1)
+	return HeurResultDidNotRun
+}
+
+func TestChildrenOnlyForFocusNodeAndSolvingGetters(t *testing.T) {
+	probe := &childrenProbe{}
+	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("gen-ip054.mps"))
+	m.Add(NewHeur(probe).Name("probe").Timing(HeurTimingBeforeNode).Freq(1))
+	m, _ = m.SetIntParam("lp/solvefreq", 0) // no node LPs below the root: exercises the no-LP Redcost path
+	m, _ = m.SetLongintParam("limits/nodes", 20)
+	m.Solve()
+	if probe.solVal.Load() == 0 || probe.nonFocus.Load() == 0 {
+		t.Fatalf("probe ran %d times, non-focus children rejected %d times", probe.solVal.Load(), probe.nonFocus.Load())
 	}
 }

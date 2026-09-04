@@ -111,17 +111,29 @@ type ConshdlrPlugin struct {
 	scip *Scip // keeps the owning instance alive and identifies it
 }
 
+// live panics with *Error unless the wrapper is usable; see handleErr.
+func (h ConshdlrPlugin) live(op string) {
+	mustLive(op, "ConshdlrPlugin", h.raw != nil, h.scip, 0, true)
+}
+
 // Inner returns a raw pointer to the underlying SCIP_CONSHDLR.
 func (c ConshdlrPlugin) Inner() *C.SCIP_CONSHDLR { return c.raw }
 
 // Name returns the name of the constraint handler.
-func (c ConshdlrPlugin) Name() string { return goString(C.SCIPconshdlrGetName(c.raw)) }
+func (c ConshdlrPlugin) Name() string {
+	c.live("ConshdlrPlugin.Name")
+	return goString(C.SCIPconshdlrGetName(c.raw))
+}
 
 // Desc returns the description of the constraint handler.
-func (c ConshdlrPlugin) Desc() string { return goString(C.SCIPconshdlrGetDesc(c.raw)) }
+func (c ConshdlrPlugin) Desc() string {
+	c.live("ConshdlrPlugin.Desc")
+	return goString(C.SCIPconshdlrGetDesc(c.raw))
+}
 
 // CreateEmptyRow creates an empty row for the constraint handler.
 func (c ConshdlrPlugin) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
+	c.live("ConshdlrPlugin.CreateEmptyRow")
 	return NewRow().Name(name).Bounds(lhs, rhs).Local(local).Modifiable(modifiable).Removable(removable).
 		Source(SourceConshdlr(c)).TryAddTo(model)
 }

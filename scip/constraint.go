@@ -9,31 +9,45 @@ import "C"
 type Constraint struct {
 	raw  *C.SCIP_CONS
 	scip *Scip
+	gen  uint64 // transform generation at creation; see handleErr
+	orig bool   // original-problem handles survive FreeTransform
 }
+
+func (s *Scip) newCons(raw *C.SCIP_CONS) Constraint {
+	h := Constraint{raw: raw, scip: s}
+	if raw != nil {
+		h.orig = C.SCIPconsIsOriginal(raw) != 0
+		h.gen = s.gen()
+	}
+	return h
+}
+
+// live panics with *Error unless the handle is usable; see handleErr.
+func (h Constraint) live(op string) { mustLive(op, "Constraint", h.raw != nil, h.scip, h.gen, h.orig) }
 
 // Inner returns the raw pointer to the underlying SCIP_CONS.
 func (c Constraint) Inner() *C.SCIP_CONS { return c.raw }
 
 // Name returns the name of the constraint.
 func (c Constraint) Name() string {
-	mustLive("Constraint.Name", "Constraint", c.raw != nil, c.scip)
+	c.live("Constraint.Name")
 	return goString(C.SCIPconsGetName(c.raw))
 }
 
 // Row returns the row associated with the constraint, if any.
 func (c Constraint) Row() (Row, bool) {
-	mustLive("Constraint.Row", "Constraint", c.raw != nil, c.scip)
+	c.live("Constraint.Row")
 	rowPtr := C.SCIPconsGetRow(c.scip.raw, c.raw)
 	if rowPtr == nil {
 		return Row{}, false
 	}
-	return Row{raw: rowPtr, scip: c.scip}, true
+	return c.scip.newRow(rowPtr), true
 }
 
 // DualSol returns the dual solution of the linear constraint in the current
 // LP. Returns false if the constraint is not a linear constraint.
 func (c Constraint) DualSol() (float64, bool) {
-	mustLive("Constraint.DualSol", "Constraint", c.raw != nil, c.scip)
+	c.live("Constraint.DualSol")
 	if !c.isLinearCons() {
 		return 0, false
 	}
@@ -44,7 +58,7 @@ func (c Constraint) DualSol() (float64, bool) {
 // the current (infeasible) LP. Returns false if the constraint is not a
 // linear constraint.
 func (c Constraint) FarkasDualSol() (float64, bool) {
-	mustLive("Constraint.FarkasDualSol", "Constraint", c.raw != nil, c.scip)
+	c.live("Constraint.FarkasDualSol")
 	if !c.isLinearCons() {
 		return 0, false
 	}
@@ -52,7 +66,7 @@ func (c Constraint) FarkasDualSol() (float64, bool) {
 }
 
 func (c Constraint) isLinearCons() bool {
-	mustLive("Constraint.isLinearCons", "Constraint", c.raw != nil, c.scip)
+	c.live("Constraint.isLinearCons")
 	hdlr := C.SCIPconsGetHdlr(c.raw)
 	if hdlr == nil {
 		return false
@@ -66,26 +80,26 @@ func (c Constraint) isLinearCons() bool {
 
 // IsModifiable returns the modifiable flag of the constraint.
 func (c Constraint) IsModifiable() bool {
-	mustLive("Constraint.IsModifiable", "Constraint", c.raw != nil, c.scip)
+	c.live("Constraint.IsModifiable")
 	return c.scip.consIsModifiable(c)
 }
 
 // IsRemovable returns the removable flag of the constraint.
 func (c Constraint) IsRemovable() bool {
-	mustLive("Constraint.IsRemovable", "Constraint", c.raw != nil, c.scip)
+	c.live("Constraint.IsRemovable")
 	return c.scip.consIsRemovable(c)
 }
 
 // IsSeparated returns whether the constraint should be separated during LP
 // processing.
 func (c Constraint) IsSeparated() bool {
-	mustLive("Constraint.IsSeparated", "Constraint", c.raw != nil, c.scip)
+	c.live("Constraint.IsSeparated")
 	return c.scip.consIsSeparated(c)
 }
 
 // Transformed returns the corresponding transformed constraint, if it exists.
 func (c Constraint) Transformed() (Constraint, bool) {
-	mustLive("Constraint.Transformed", "Constraint", c.raw != nil, c.scip)
+	c.live("Constraint.Transformed")
 	ptr, err := c.scip.getTransformedCons(c)
 	if err != nil {
 		return Constraint{}, false
@@ -93,5 +107,5 @@ func (c Constraint) Transformed() (Constraint, bool) {
 	if ptr == nil {
 		return Constraint{}, false
 	}
-	return Constraint{raw: ptr, scip: c.scip}, true
+	return c.scip.newCons(ptr), true
 }

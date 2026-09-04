@@ -16,15 +16,24 @@ import (
 type Solution struct {
 	raw  *C.SCIP_SOL
 	scip *Scip
+	gen  uint64 // transform generation at creation; see handleErr
+	orig bool   // original-problem handles survive FreeTransform
 }
+
+func (s *Scip) newSol(raw *C.SCIP_SOL) Solution {
+	h := Solution{raw: raw, scip: s}
+	if raw != nil {
+		h.orig = C.SCIPsolIsOriginal(raw) != 0
+		h.gen = s.gen()
+	}
+	return h
+}
+
+// live panics with *Error unless the handle is usable; see handleErr.
+func (h Solution) live(op string) { mustLive(op, "Solution", h.raw != nil, h.scip, h.gen, h.orig) }
 
 // Inner returns the raw pointer to the underlying SCIP_SOL.
 func (s Solution) Inner() *C.SCIP_SOL { return s.raw }
-
-// live panics with *Error on a zero or consumed solution (SCIP treats a NULL
-// SCIP_SOL as "the current LP solution", which would silently return the
-// wrong values) or one whose model was freed.
-func (s Solution) live(op string) { mustLive(op, "Solution", s.raw != nil, s.scip) }
 
 // ObjVal returns the objective value of the solution.
 func (s Solution) ObjVal() float64 {
@@ -43,14 +52,14 @@ func (s Solution) Val(v Variable) float64 {
 
 // SetVal sets the value of a variable in the solution.
 func (s Solution) SetVal(v Variable, val float64) {
-	mustLive("Solution.SetVal", "Solution", s.raw != nil, s.scip)
+	s.live("Solution.SetVal")
 	must(s.TrySetVal(v, val))
 }
 
 // TrySetVal is SetVal returning an error instead of panicking.
 func (s Solution) TrySetVal(v Variable, val float64) error {
 	m := Model{scip: s.scip}
-	if err := m.checkHandle("Solution.SetVal", "Solution", s.raw != nil, s.scip); err != nil {
+	if err := m.checkHandle("Solution.SetVal", "Solution", s.raw != nil, s.scip, s.gen, s.orig); err != nil {
 		return err
 	}
 	if err := m.checkVars("Solution.SetVal", v); err != nil {
@@ -62,14 +71,14 @@ func (s Solution) TrySetVal(v Variable, val float64) error {
 // IsPartial returns whether this is a partial solution: unset variables are
 // UNKNOWN rather than zero.
 func (s Solution) IsPartial() bool {
-	mustLive("Solution.IsPartial", "Solution", s.raw != nil, s.scip)
+	s.live("Solution.IsPartial")
 	return C.SCIPsolIsPartial(s.raw) == 1
 }
 
 // AsNameMap returns the solution as a var-name to value map, skipping values
 // that are zero within tolerance.
 func (s Solution) AsNameMap() map[string]float64 {
-	mustLive("Solution.AsNameMap", "Solution", s.raw != nil, s.scip)
+	s.live("Solution.AsNameMap")
 	mustStage("Solution.AsNameMap", s.scip, stagesTrans) // SCIPgetVars
 	vars := C.SCIPgetVars(s.scip.raw)
 	nVars := int(C.SCIPgetNVars(s.scip.raw))
@@ -88,7 +97,7 @@ func (s Solution) AsNameMap() map[string]float64 {
 // AsIDMap returns the solution as a var-probindex to value map, skipping
 // values that are zero within tolerance.
 func (s Solution) AsIDMap() map[int]float64 {
-	mustLive("Solution.AsIDMap", "Solution", s.raw != nil, s.scip)
+	s.live("Solution.AsIDMap")
 	mustStage("Solution.AsIDMap", s.scip, stagesTrans) // SCIPgetVars
 	vars := C.SCIPgetVars(s.scip.raw)
 	nVars := int(C.SCIPgetNVars(s.scip.raw))

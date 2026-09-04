@@ -28,17 +28,32 @@ type NodeselPlugin struct {
 	scip *Scip // keeps the owning instance alive and identifies it
 }
 
+// live panics with *Error unless the wrapper is usable; see handleErr.
+func (h NodeselPlugin) live(op string) { mustLive(op, "NodeselPlugin", h.raw != nil, h.scip, 0, true) }
+
 // Inner returns the internal raw pointer of the node selector.
 func (n NodeselPlugin) Inner() *C.SCIP_NODESEL { return n.raw }
 
 // Name returns the name of the node selector.
-func (n NodeselPlugin) Name() string { return goString(C.SCIPnodeselGetName(n.raw)) }
+func (n NodeselPlugin) Name() string {
+	n.live("NodeselPlugin.Name")
+	return goString(C.SCIPnodeselGetName(n.raw))
+}
 
 // Desc returns the description of the node selector.
-func (n NodeselPlugin) Desc() string { return goString(C.SCIPnodeselGetDesc(n.raw)) }
+func (n NodeselPlugin) Desc() string {
+	n.live("NodeselPlugin.Desc")
+	return goString(C.SCIPnodeselGetDesc(n.raw))
+}
 
 // StdPriority returns the standard priority of the node selector.
-func (n NodeselPlugin) StdPriority() int32 { return int32(C.SCIPnodeselGetStdPriority(n.raw)) }
+func (n NodeselPlugin) StdPriority() int32 {
+	n.live("NodeselPlugin.StdPriority")
+	return int32(C.SCIPnodeselGetStdPriority(n.raw))
+}
 
 // MemSavePriority returns the memory saving priority of the node selector.
-func (n NodeselPlugin) MemSavePriority() int32 { return int32(C.SCIPnodeselGetMemsavePriority(n.raw)) }
+func (n NodeselPlugin) MemSavePriority() int32 {
+	n.live("NodeselPlugin.MemSavePriority")
+	return int32(C.SCIPnodeselGetMemsavePriority(n.raw))
+}

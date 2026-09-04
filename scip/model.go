@@ -366,7 +366,7 @@ func (m Model) TrySetHeurPriority(h HeurPlugin, priority int32) error {
 	if err := m.guard("SetHeurPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetHeurPriority", "HeurPlugin", h.raw != nil, h.scip); err != nil {
+	if err := m.checkHandle("SetHeurPriority", "HeurPlugin", h.raw != nil, h.scip, 0, true); err != nil {
 		return err
 	}
 	return m.call("SetHeurPriority", C.SCIPsetHeurPriority(m.scip.raw, h.raw, C.int(priority)))
@@ -380,7 +380,7 @@ func (m Model) TrySetSepaPriority(s SeparatorPlugin, priority int32) error {
 	if err := m.guard("SetSepaPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetSepaPriority", "SeparatorPlugin", s.raw != nil, s.scip); err != nil {
+	if err := m.checkHandle("SetSepaPriority", "SeparatorPlugin", s.raw != nil, s.scip, 0, true); err != nil {
 		return err
 	}
 	return m.call("SetSepaPriority", C.SCIPsetSepaPriority(m.scip.raw, s.raw, C.int(priority)))
@@ -396,7 +396,7 @@ func (m Model) TrySetPresolPriority(p PresolverPlugin, priority int32) error {
 	if err := m.guard("SetPresolPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetPresolPriority", "PresolverPlugin", p.raw != nil, p.scip); err != nil {
+	if err := m.checkHandle("SetPresolPriority", "PresolverPlugin", p.raw != nil, p.scip, 0, true); err != nil {
 		return err
 	}
 	return m.call("SetPresolPriority", C.SCIPsetPresolPriority(m.scip.raw, p.raw, C.int(priority)))

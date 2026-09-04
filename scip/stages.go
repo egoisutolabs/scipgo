@@ -20,11 +20,6 @@ func stages(ss ...Stage) stageSet {
 func (s stageSet) has(st Stage) bool { return s&(1<<uint(st)) != 0 }
 
 var (
-	// stagesAny: no stage restriction; only a freed instance is rejected.
-	stagesAny = stages(StageInit, StageProblem, StageTransforming, StageTransformed, StageInitPresolve,
-		StagePresolving, StageExitPresolve, StagePresolved, StageInitSolve, StageSolving, StageSolved,
-		StageExitSolve, StageFreeTrans)
-
 	// stagesOrig: scip_prob.c SCIPgetNOrigVars/SCIPgetOrigVars/SCIPgetNOrigConss/
 	// SCIPfindCons, scip_sol.c SCIPgetSolVal, scip_solvingstats.c SCIPgetNNodes.
 	// The objective getter used by Solution.ObjVal permits this set for
@@ -38,21 +33,19 @@ var (
 	stagesTrans = stages(StageProblem, StageTransformed, StageInitPresolve, StagePresolving, StageExitPresolve,
 		StagePresolved, StageInitSolve, StageSolving, StageSolved, StageExitSolve)
 
-	// stagesInProbing: scip_probing.c SCIPinProbing (no PROBLEM stage).
-	stagesInProbing = stages(StageTransformed, StageInitPresolve, StagePresolving, StageExitPresolve, StagePresolved,
+	// stagesTransformed: scip_probing.c SCIPinProbing, scip_solvingstats.c
+	// SCIPgetPrimalbound/SCIPgetDualbound (everything from TRANSFORMED to EXITSOLVE).
+	stagesTransformed = stages(StageTransformed, StageInitPresolve, StagePresolving, StageExitPresolve, StagePresolved,
 		StageInitSolve, StageSolving, StageSolved, StageExitSolve)
 
-	// stagesBestSol: scip_sol.c SCIPgetBestSol (also legal before a problem exists).
-	stagesBestSol = stages(StageInit, StageProblem, StageTransformed, StageInitPresolve, StagePresolving, StageExitPresolve,
-		StagePresolved, StageInitSolve, StageSolving, StageSolved, StageExitSolve)
+	// stagesBestSol: scip_sol.c SCIPgetBestSol permits INIT too, but the
+	// binding reads SCIPgetNSols first, which does not, so it takes the
+	// SCIPgetNSols set.
+	stagesBestSol = stagesTrans
 
 	// stagesConss: scip_prob.c SCIPgetNConss/SCIPgetConss (no EXITSOLVE).
 	stagesConss = stages(StageProblem, StageTransformed, StageInitPresolve, StagePresolving, StageExitPresolve,
 		StagePresolved, StageInitSolve, StageSolving, StageSolved)
-
-	// stagesBounds: scip_solvingstats.c SCIPgetPrimalbound/SCIPgetDualbound.
-	stagesBounds = stages(StageTransformed, StageInitPresolve, StagePresolving, StageExitPresolve, StagePresolved,
-		StageInitSolve, StageSolving, StageSolved, StageExitSolve)
 
 	// stagesSolvingTime: scip_solvingstats.c SCIPgetSolvingTime.
 	stagesSolvingTime = stages(StageProblem, StageTransforming, StageTransformed, StageInitPresolve, StagePresolving,
@@ -64,23 +57,19 @@ var (
 	// stagesFocus: scip_tree.c SCIPgetFocusNode.
 	stagesFocus = stages(StageInitPresolve, StagePresolving, StageExitPresolve, StageSolving)
 
-	// stagesChildren: scip_tree.c SCIPgetChildren/SCIPgetNChildren.
-	stagesChildren = stages(StageSolving, StageSolved)
-
-	// stagesLeaves: scip_tree.c SCIPgetLeaves/SCIPgetSiblings.
-	stagesLeaves = stages(StageSolving, StageSolved)
+	// stagesSolvingSolved: scip_tree.c SCIPgetChildren/SCIPgetNChildren/
+	// SCIPgetLeaves/SCIPgetSiblings, scip_lp.c SCIPgetColRedcost.
+	stagesSolvingSolved = stages(StageSolving, StageSolved)
 
 	// stagesSolving: scip_tree.c SCIPgetBestNode and friends, scip_lp.c
-	// SCIPgetLPObjval/SCIPgetLPSolstat/SCIPisLPConstructed, scip_var.c
-	// SCIPgetVarRedcost, scip_probing.c SCIPgetVarObjProbing, the dive getters.
+	// SCIPgetLPObjval/SCIPgetLPSolstat/SCIPisLPConstructed/SCIPhasCurrentNodeLP,
+	// scip_var.c SCIPgetVarRedcost, scip_probing.c SCIPgetVarObjProbing, the
+	// dive getters.
 	stagesSolving = stages(StageSolving)
 
 	// stagesVarSol: scip_var.c SCIPgetVarSol; the solution-value getter takes
 	// the same set when given a NULL solution (the current LP/pseudo solution).
 	stagesVarSol = stages(StagePresolved, StageSolving)
-
-	// stagesColRedcost: scip_lp.c SCIPgetColRedcost.
-	stagesColRedcost = stages(StageSolving, StageSolved)
 
 	// stagesProbingDepth: scip_probing.c SCIPgetProbingDepth.
 	stagesProbingDepth = stages(StagePresolving, StageSolving)
@@ -100,18 +89,6 @@ func (m Model) query(op string, allowed stageSet) error {
 		return &Error{Op: op, Stage: st, Retcode: RetcodeInvalidCall, Detail: "not permitted in this stage"}
 	}
 	return nil
-}
-
-// mustLive panics with *Error when a handle is the zero value or its model
-// has been freed, instead of letting SCIP dereference a nil or dangling
-// pointer. It is the first statement of every handle method.
-func mustLive(op, what string, raw bool, owner *Scip) {
-	switch {
-	case !raw:
-		panic(&Error{Op: op, Stage: owner.stage(), Retcode: RetcodeInvalidData, Detail: "zero " + what})
-	case owner == nil || owner.raw == nil:
-		panic(&Error{Op: op, Stage: StageFree, Retcode: RetcodeInvalidCall, Detail: what + " belongs to a freed model"})
-	}
 }
 
 // mustStage panics with *Error when a handle method's SCIP getter is not

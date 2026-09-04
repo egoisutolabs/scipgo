@@ -12,24 +12,38 @@ type VarId = int
 type Variable struct {
 	raw  *C.SCIP_VAR
 	scip *Scip
+	gen  uint64 // transform generation at creation; see handleErr
+	orig bool   // original-problem handles survive FreeTransform
 }
+
+func (s *Scip) newVar(raw *C.SCIP_VAR) Variable {
+	h := Variable{raw: raw, scip: s}
+	if raw != nil {
+		h.orig = C.SCIPvarIsOriginal(raw) != 0
+		h.gen = s.gen()
+	}
+	return h
+}
+
+// live panics with *Error unless the handle is usable; see handleErr.
+func (h Variable) live(op string) { mustLive(op, "Variable", h.raw != nil, h.scip, h.gen, h.orig) }
 
 // Inner returns the raw pointer to the underlying SCIP_VAR.
 func (v Variable) Inner() *C.SCIP_VAR { return v.raw }
 
 // Index returns the index of the variable.
 func (v Variable) Index() VarId {
-	mustLive("Variable.Index", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.Index")
 	id := C.SCIPvarGetIndex(v.raw)
 	if id < 0 {
-		panic("negative variable index")
+		panic(&Error{Op: "Variable.Index", Stage: v.scip.stage(), Retcode: RetcodeInvalidData, Detail: "negative variable index"})
 	}
 	return int(id)
 }
 
 // Name returns the name of the variable.
 func (v Variable) Name() string {
-	mustLive("Variable.Name", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.Name")
 	return goString(C.SCIPvarGetName(v.raw))
 }
 
@@ -47,132 +61,132 @@ func (v Variable) safeName() string {
 
 // Obj returns the objective coefficient of the variable.
 func (v Variable) Obj() float64 {
-	mustLive("Variable.Obj", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.Obj")
 	return float64(C.SCIPvarGetObj(v.raw))
 }
 
 // Lb returns the lower bound of the variable (local).
 func (v Variable) Lb() float64 {
-	mustLive("Variable.Lb", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.Lb")
 	return float64(C.SCIPvarGetLbLocal(v.raw))
 }
 
 // Ub returns the upper bound of the variable (local).
 func (v Variable) Ub() float64 {
-	mustLive("Variable.Ub", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.Ub")
 	return float64(C.SCIPvarGetUbLocal(v.raw))
 }
 
 // LbLocal returns the local lower bound of the variable.
 func (v Variable) LbLocal() float64 {
-	mustLive("Variable.LbLocal", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.LbLocal")
 	return float64(C.SCIPvarGetLbLocal(v.raw))
 }
 
 // UbLocal returns the local upper bound of the variable.
 func (v Variable) UbLocal() float64 {
-	mustLive("Variable.UbLocal", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.UbLocal")
 	return float64(C.SCIPvarGetUbLocal(v.raw))
 }
 
 // LbGlobal returns the global lower bound of the variable.
 func (v Variable) LbGlobal() float64 {
-	mustLive("Variable.LbGlobal", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.LbGlobal")
 	return float64(C.SCIPvarGetLbGlobal(v.raw))
 }
 
 // UbGlobal returns the global upper bound of the variable.
 func (v Variable) UbGlobal() float64 {
-	mustLive("Variable.UbGlobal", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.UbGlobal")
 	return float64(C.SCIPvarGetUbGlobal(v.raw))
 }
 
 // VarType returns the type of the variable.
 func (v Variable) VarType() VarType {
-	mustLive("Variable.VarType", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.VarType")
 	return varTypeFromC(C.SCIPvarGetType(v.raw))
 }
 
 // Status returns the status of the variable.
 func (v Variable) Status() VarStatus {
-	mustLive("Variable.Status", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.Status")
 	return varStatusFromC(C.SCIPvarGetStatus(v.raw))
 }
 
 // Col returns the column associated with the variable, if it is a column
 // variable in the LP.
 func (v Variable) Col() (Col, bool) {
-	mustLive("Variable.Col", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.Col")
 	if v.Status() == VarStatusColumn {
-		return Col{raw: C.SCIPvarGetCol(v.raw), scip: v.scip}, true
+		return v.scip.newCol(C.SCIPvarGetCol(v.raw)), true
 	}
 	return Col{}, false
 }
 
 // IsInLP returns whether the variable is a column variable in the LP relaxation.
 func (v Variable) IsInLP() bool {
-	mustLive("Variable.IsInLP", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.IsInLP")
 	return C.SCIPvarIsInLP(v.raw) != 0
 }
 
 // SolVal returns the solution value of the variable in the current node.
 func (v Variable) SolVal() float64 {
-	mustLive("Variable.SolVal", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.SolVal")
 	mustStage("Variable.SolVal", v.scip, stagesVarSol)
 	return float64(C.SCIPgetVarSol(v.scip.raw, v.raw))
 }
 
 // IsDeleted returns whether the variable is deleted.
 func (v Variable) IsDeleted() bool {
-	mustLive("Variable.IsDeleted", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.IsDeleted")
 	return C.SCIPvarIsDeleted(v.raw) != 0
 }
 
 // IsTransformed returns whether the variable is transformed.
 func (v Variable) IsTransformed() bool {
-	mustLive("Variable.IsTransformed", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.IsTransformed")
 	return C.SCIPvarIsTransformed(v.raw) != 0
 }
 
 // IsOriginal returns whether the variable is original.
 func (v Variable) IsOriginal() bool {
-	mustLive("Variable.IsOriginal", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.IsOriginal")
 	return C.SCIPvarIsOriginal(v.raw) != 0
 }
 
 // IsNegated returns whether the variable is negated.
 func (v Variable) IsNegated() bool {
-	mustLive("Variable.IsNegated", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.IsNegated")
 	return C.SCIPvarIsNegated(v.raw) != 0
 }
 
 // IsRemovable returns whether the variable is removable (due to aging in the LP).
 func (v Variable) IsRemovable() bool {
-	mustLive("Variable.IsRemovable", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.IsRemovable")
 	return C.SCIPvarIsRemovable(v.raw) != 0
 }
 
 // IsTransFromOrig returns whether the variable is a directed counterpart of
 // an original variable.
 func (v Variable) IsTransFromOrig() bool {
-	mustLive("Variable.IsTransFromOrig", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.IsTransFromOrig")
 	return C.SCIPvarIsTransformedOrigvar(v.raw) != 0
 }
 
 // IsActive returns whether the variable is active (neither fixed nor aggregated).
 func (v Variable) IsActive() bool {
-	mustLive("Variable.IsActive", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.IsActive")
 	return C.SCIPvarIsActive(v.raw) != 0
 }
 
 // Transformed returns the transformed variable if it exists.
 func (v Variable) Transformed() (Variable, bool) {
-	mustLive("Variable.Transformed", "Variable", v.raw != nil, v.scip)
+	v.live("Variable.Transformed")
 	varPtr := C.SCIPvarGetTransVar(v.raw)
 	if varPtr == nil {
 		return Variable{}, false
 	}
-	return Variable{raw: varPtr, scip: v.scip}, true
+	return v.scip.newVar(varPtr), true
 }
 
 // Redcost returns the reduced costs of the variable in the current node's LP
@@ -180,10 +194,11 @@ func (v Variable) Transformed() (Variable, bool) {
 // current LP, (rc, true) with the reduced cost otherwise. SCIP_INVALID is
 // reported as not-present.
 func (v Variable) Redcost() (float64, bool) {
-	mustLive("Variable.Redcost", "Variable", v.raw != nil, v.scip)
-	// Reduced costs only exist while solving; SCIPgetVarRedcost is undefined
-	// elsewhere, and "not available" is the honest answer, not a panic.
-	if !stagesSolving.has(v.scip.stage()) {
+	v.live("Variable.Redcost")
+	// Reduced costs exist only while solving with the current node's LP
+	// solved; SCIPgetVarRedcost is undefined elsewhere, and "not available"
+	// is the honest answer, not a panic.
+	if !stagesSolving.has(v.scip.stage()) || C.SCIPhasCurrentNodeLP(v.scip.raw) == 0 {
 		return 0, false
 	}
 	rc := float64(C.SCIPgetVarRedcost(v.scip.raw, v.raw))

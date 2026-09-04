@@ -32,9 +32,10 @@
 // Retcode for a solver failure, or a *CallbackPanic when a plugin callback
 // panicked during a solve. The plain method panics with that same value.
 // errors.Is(err, scip.RetcodeInvalidCall) works on either. Calls on a freed
-// Model, or in a stage SCIP does not permit for that query, produce an
-// *Error rather than an abort inside SCIP; queries panic with it, Try* forms
-// return it.
+// Model, on a handle whose transformed problem was released by
+// FreeTransform, on a handle from another model, or in a stage SCIP does not
+// permit for that query, produce an *Error rather than undefined behaviour
+// inside SCIP; queries panic with it, Try* forms return it.
 //
 // A Model and every handle derived from it belong to one goroutine. SCIP
 // instances are released by a finalizer, or immediately by Model.Free, which

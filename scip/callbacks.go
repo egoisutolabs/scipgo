@@ -96,6 +96,14 @@ func setCopyParent(target, source *C.SCIP) {
 	copyParents.m[target] = root
 }
 
+// isCopy reports whether scip is a live sub-SCIP copy of a Go-owned instance.
+func isCopy(scip *C.SCIP) bool {
+	copyParents.Lock()
+	defer copyParents.Unlock()
+	_, ok := copyParents.m[scip]
+	return ok
+}
+
 func forgetCopy(scip *C.SCIP) {
 	copyParents.Lock()
 	defer copyParents.Unlock()
@@ -218,7 +226,12 @@ func includeResult(id uintptr, rc C.SCIP_RETCODE) error {
 
 // weakScip wraps a raw SCIP pointer without taking ownership, as needed
 // inside plugin callbacks.
-func weakScip(scip *C.SCIP) *Scip { return &Scip{raw: scip, weak: true} }
+func weakScip(scip *C.SCIP) *Scip {
+	// The owner is the strong instance this callback belongs to (through
+	// copyParents for sub-SCIP copies), so handles minted here share its
+	// liveness and die with it; see handleErr.
+	return &Scip{raw: scip, weak: true, owner: instanceOf(rootScip(scip))}
+}
 
 // solvingModel wraps a raw SCIP pointer into a Model in the Solving stage, as
 // passed to plugin callbacks.
@@ -396,7 +409,7 @@ func GoNodeselComp(scip *C.SCIP, nodesel *C.SCIP_NODESEL, node1, node2 *C.SCIP_N
 		return 0
 	}
 	s := weakScip(scip)
-	ret = C.int(sel.Comp(Node{raw: node1, scip: s}, Node{raw: node2, scip: s}))
+	ret = C.int(sel.Comp(s.newNode(node1), s.newNode(node2)))
 	return
 }
 
@@ -695,7 +708,7 @@ func GoConsCheck(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, n
 	}
 	s := weakScip(scip)
 	model := Model{scip: s}
-	solution := Solution{raw: sol, scip: s}
+	solution := s.newSol(sol)
 
 	feasible := c.Check(model, ConshdlrPlugin{raw: conshdlr, scip: model.scip}, solution)
 	if feasible {

@@ -11,7 +11,7 @@ func (m Model) sol(op string, raw *C.SCIP_SOL, err error) (Solution, error) {
 	if err != nil {
 		return Solution{}, m.wrap(op, err, "")
 	}
-	return Solution{raw: raw, scip: m.scip}, nil
+	return m.scip.newSol(raw), nil
 }
 
 // TryCreateSol creates a new solution initialized to zero.
@@ -78,7 +78,7 @@ func (m Model) AddSol(sol *Solution) error {
 	if sol == nil || sol.raw == nil {
 		return m.invalid("AddSol", RetcodeInvalidData, "nil or consumed solution")
 	}
-	if err := m.checkHandle("AddSol", "Solution", true, sol.scip); err != nil {
+	if err := m.checkHandle("AddSol", "Solution", true, sol.scip, sol.gen, sol.orig); err != nil {
 		return err
 	}
 	stored, err := m.scip.addSol(sol)
@@ -127,7 +127,7 @@ func (m Model) GetSols() []Solution {
 // TryObjVal returns the objective value of the best solution found (the
 // primal bound); SCIP only permits this once the problem is transformed.
 func (m Model) TryObjVal() (float64, error) {
-	if err := m.query("ObjVal", stagesBounds); err != nil {
+	if err := m.query("ObjVal", stagesTransformed); err != nil {
 		return 0, err
 	}
 	return m.scip.objVal(), nil
@@ -142,7 +142,7 @@ func (m Model) ObjVal() float64 {
 
 // TryBestBound returns the best bound (dual bound) proven so far.
 func (m Model) TryBestBound() (float64, error) {
-	if err := m.query("BestBound", stagesBounds); err != nil {
+	if err := m.query("BestBound", stagesTransformed); err != nil {
 		return 0, err
 	}
 	return m.scip.bestBound(), nil
@@ -226,7 +226,7 @@ func (m Model) TryFocusNode() (Node, error) {
 	if raw == nil {
 		return Node{}, m.invalid("FocusNode", RetcodeInvalidCall, "no focus node; not solving")
 	}
-	return Node{raw: raw, scip: m.scip}, nil
+	return m.scip.newNode(raw), nil
 }
 
 // FocusNode returns the node currently being processed. It panics if there
@@ -247,7 +247,7 @@ func (m Model) TryCreateChild() (Node, error) {
 	if err != nil {
 		return Node{}, m.wrap("CreateChild", err, "")
 	}
-	return Node{raw: raw, scip: m.scip}, nil
+	return m.scip.newNode(raw), nil
 }
 
 // CreateChild creates a new child of the focus node. It panics on failure.
@@ -261,7 +261,8 @@ func (m Model) wrapNode(ptr *C.SCIP_NODE) *Node {
 	if ptr == nil {
 		return nil
 	}
-	return &Node{raw: ptr, scip: m.scip}
+	n := m.scip.newNode(ptr)
+	return &n
 }
 
 // treeNode is the common shape of the optional tree accessors: a freed model
@@ -313,18 +314,22 @@ func (m Model) PrioSibling() *Node { return m.treeNode("PrioSibling", m.scip.pri
 
 // Leaves returns the leaves of the branch-and-bound tree (the open nodes
 // that are neither children nor siblings of the focus node).
-func (m Model) Leaves() []Node { return m.treeNodes("Leaves", stagesLeaves, m.scip.leaves) }
+func (m Model) Leaves() []Node { return m.treeNodes("Leaves", stagesSolvingSolved, m.scip.leaves) }
 
 // Children returns the children of the focus node.
-func (m Model) Children() []Node { return m.treeNodes("Children", stagesChildren, m.scip.children) }
+func (m Model) Children() []Node {
+	return m.treeNodes("Children", stagesSolvingSolved, m.scip.children)
+}
 
 // Siblings returns the siblings of the focus node.
-func (m Model) Siblings() []Node { return m.treeNodes("Siblings", stagesLeaves, m.scip.siblings) }
+func (m Model) Siblings() []Node {
+	return m.treeNodes("Siblings", stagesSolvingSolved, m.scip.siblings)
+}
 
 func (m Model) wrapNodes(ptrs []*C.SCIP_NODE) []Node {
 	out := make([]Node, 0, len(ptrs))
 	for _, p := range ptrs {
-		out = append(out, Node{raw: p, scip: m.scip})
+		out = append(out, m.scip.newNode(p))
 	}
 	return out
 }
@@ -344,7 +349,7 @@ func (m Model) VarInProb(varProbID int) (Variable, bool) {
 	if v == nil {
 		return Variable{}, false
 	}
-	return Variable{raw: v, scip: m.scip}, true
+	return m.scip.newVar(v), true
 }
 
 // TryAddCut adds a new cut (row) to the LP. It reports whether the row is
@@ -353,7 +358,7 @@ func (m Model) TryAddCut(cut Row, forceCut bool) (bool, error) {
 	if err := m.guard("AddCut"); err != nil {
 		return false, err
 	}
-	if err := m.checkHandle("AddCut", "Row", cut.raw != nil, cut.scip); err != nil {
+	if err := m.checkHandle("AddCut", "Row", cut.raw != nil, cut.scip, cut.gen, false); err != nil {
 		return false, err
 	}
 	infeasible, err := m.scip.addRow(cut, forceCut)
@@ -473,7 +478,7 @@ func scipSols(s *Scip) []Solution {
 	raw := s.getSols()
 	out := make([]Solution, 0, len(raw))
 	for _, sol := range raw {
-		out = append(out, Solution{raw: sol, scip: s})
+		out = append(out, s.newSol(sol))
 	}
 	return out
 }
@@ -483,5 +488,5 @@ func bestSolOf(s *Scip) (Solution, bool) {
 	if raw == nil {
 		return Solution{}, false
 	}
-	return Solution{raw: raw, scip: s}, true
+	return s.newSol(raw), true
 }

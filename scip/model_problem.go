@@ -140,7 +140,7 @@ func (m Model) TryAddVar(lb, ub, obj float64, name string, varType VarType) (Var
 	if err != nil {
 		return Variable{}, m.wrap("AddVar", err, name)
 	}
-	return Variable{raw: varPtr, scip: m.scip}, nil
+	return m.scip.newVar(varPtr), nil
 }
 
 // AddVar adds a new variable; see TryAddVar. It panics on failure.
@@ -162,7 +162,7 @@ func (m Model) TryAddPricedVar(lb, ub, obj float64, name string, varType VarType
 	if err != nil {
 		return Variable{}, m.wrap("AddPricedVar", err, name)
 	}
-	return Variable{raw: varPtr, scip: m.scip}, nil
+	return m.scip.newVar(varPtr), nil
 }
 
 // AddPricedVar adds a new priced variable during pricing. It panics on failure.
@@ -178,7 +178,7 @@ func (m Model) cons(op, name string, raw *C.SCIP_CONS, err error) (Constraint, e
 	if err != nil {
 		return Constraint{}, m.wrap(op, err, name)
 	}
-	return Constraint{raw: raw, scip: m.scip}, nil
+	return m.scip.newCons(raw), nil
 }
 
 // TryAddCons adds a new linear constraint lhs <= sum(coefs*vars) <= rhs.
@@ -520,7 +520,7 @@ func scipVars(s *Scip, original bool) []Variable {
 	out := make([]Variable, 0, len(m))
 	for id := 0; id <= maxIdx; id++ { // index order, like the Rust BTreeMap
 		if v, ok := m[id]; ok {
-			out = append(out, Variable{raw: v, scip: s})
+			out = append(out, s.newVar(v))
 		}
 	}
 	return out
@@ -530,7 +530,7 @@ func scipConss(s *Scip) []Constraint {
 	raw := s.conss()
 	out := make([]Constraint, 0, len(raw))
 	for _, c := range raw {
-		out = append(out, Constraint{raw: c, scip: s})
+		out = append(out, s.newCons(c))
 	}
 	return out
 }
@@ -540,7 +540,7 @@ func findConsOf(s *Scip, name string) (Constraint, bool) {
 	if raw == nil {
 		return Constraint{}, false
 	}
-	return Constraint{raw: raw, scip: s}, true
+	return s.newCons(raw), true
 }
 
 func varByID(s *Scip, varID VarId) (Variable, bool) {
@@ -550,5 +550,5 @@ func varByID(s *Scip, varID VarId) (Variable, bool) {
 	if !ok {
 		return Variable{}, false
 	}
-	return Variable{raw: v, scip: s}, true
+	return s.newVar(v), true
 }
