@@ -386,13 +386,13 @@ type solvingConsHeur struct {
 
 func (h solvingConsHeur) Execute(model Model, _ HeurTiming, _ bool) HeurResult {
 	if h.consOK.Load() {
-		return HeurResult{State: HeurResultStateDidNotRun}
+		return HeurResultDidNotRun
 	}
 	vars := model.Vars()
 	c, err := model.TryAddCons(vars[:1], []float64{1}, NegInfinity, Infinity, "added-while-solving")
 	h.consOK.Store(err == nil && c.raw != nil && c.Name() == "added-while-solving")
 	h.freeRejected.Store(errors.Is(model.TryFree(), RetcodeInvalidCall))
-	return HeurResult{State: HeurResultStateDidNotRun}
+	return HeurResultDidNotRun
 }
 
 func TestConsAddedWhileSolvingIsUsable(t *testing.T) {
