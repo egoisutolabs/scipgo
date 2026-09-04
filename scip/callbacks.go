@@ -75,16 +75,25 @@ func isCopyable(plugin any) bool {
 // copyParents maps a sub-SCIP that received a plugin copy to the Go-owned
 // instance the original plugin belongs to, so panics and datastore lookups
 // from inside the copy resolve to the instance the user holds.
+// copyEntry records a sub-SCIP copy: the Go-owned root it belongs to and an
+// incarnation number, unique per registration, so a wrapper minted in one
+// copy is not revived by a later copy that SCIP creates at the same address.
+type copyEntry struct {
+	root *C.SCIP
+	inc  uint64
+}
+
 var copyParents = struct {
 	sync.Mutex
-	m map[*C.SCIP]*C.SCIP
-}{m: make(map[*C.SCIP]*C.SCIP)}
+	m    map[*C.SCIP]copyEntry
+	next uint64
+}{m: make(map[*C.SCIP]copyEntry)}
 
 func rootScip(scip *C.SCIP) *C.SCIP {
 	copyParents.Lock()
 	defer copyParents.Unlock()
-	if root, ok := copyParents.m[scip]; ok {
-		return root
+	if e, ok := copyParents.m[scip]; ok {
+		return e.root
 	}
 	return scip
 }
@@ -93,15 +102,16 @@ func setCopyParent(target, source *C.SCIP) {
 	root := rootScip(source)
 	copyParents.Lock()
 	defer copyParents.Unlock()
-	copyParents.m[target] = root
+	copyParents.next++
+	copyParents.m[target] = copyEntry{root: root, inc: copyParents.next}
 }
 
-// isCopy reports whether scip is a live sub-SCIP copy of a Go-owned instance.
-func isCopy(scip *C.SCIP) bool {
+// copyIncarnation returns the incarnation of the live sub-SCIP copy at scip,
+// or 0 if there is none.
+func copyIncarnation(scip *C.SCIP) uint64 {
 	copyParents.Lock()
 	defer copyParents.Unlock()
-	_, ok := copyParents.m[scip]
-	return ok
+	return copyParents.m[scip].inc
 }
 
 func forgetCopy(scip *C.SCIP) {
@@ -228,9 +238,17 @@ func includeResult(id uintptr, rc C.SCIP_RETCODE) error {
 // inside plugin callbacks.
 func weakScip(scip *C.SCIP) *Scip {
 	// The owner is the strong instance this callback belongs to (through
-	// copyParents for sub-SCIP copies), so handles minted here share its
-	// liveness and die with it; see handleErr.
-	return &Scip{raw: scip, weak: true, owner: instanceOf(rootScip(scip))}
+	// copyParents for sub-SCIP copies), held weakly so handles minted here
+	// share its liveness and die with it without keeping it alive; see
+	// handleErr. A copy wrapper also records which incarnation of the copy
+	// it belongs to.
+	root := rootScip(scip)
+	w := &Scip{raw: scip, weak: true}
+	w.owner, _ = instanceWeak(root)
+	if scip != root {
+		w.copyInc = copyIncarnation(scip)
+	}
+	return w
 }
 
 // solvingModel wraps a raw SCIP pointer into a Model in the Solving stage, as

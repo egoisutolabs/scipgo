@@ -316,16 +316,29 @@ func TestChildrenOnlyForFocusNodeAndSolvingGetters(t *testing.T) {
 }
 
 func TestModelsAreCollectable(t *testing.T) {
-	wp := func() weak.Pointer[Scip] {
-		m := createTestModel(t).Solve()
-		return weak.Make(m.scip)
-	}()
-	for i := 0; i < 5 && wp.Value() != nil; i++ {
-		runtime.GC()
+	collectable := func(name string, mk func() *Scip) {
+		t.Helper()
+		wp := weak.Make(mk())
+		for i := 0; i < 5 && wp.Value() != nil; i++ {
+			runtime.GC()
+		}
+		if wp.Value() != nil {
+			t.Fatalf("%s: a dropped model must be collectable; a registry is holding it", name)
+		}
 	}
-	if wp.Value() != nil {
-		t.Fatal("a dropped model must be collectable; a registry is holding it")
-	}
+	collectable("plain", func() *Scip { return createTestModel(t).Solve().scip })
+	// a plugin that keeps callback handles sits in the plugin registry, which
+	// must not root the model through those handles
+	collectable("plugin keeps callback handles", func() *Scip {
+		m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
+		h := &keepingHeur{}
+		m.Add(NewHeur(h).Name("keeper"))
+		m.Solve()
+		if h.model == nil {
+			t.Fatal("heuristic never ran")
+		}
+		return m.scip
+	})
 }
 
 func TestSubSCIPHandlesRejectedByParent(t *testing.T) {
@@ -336,7 +349,7 @@ func TestSubSCIPHandlesRejectedByParent(t *testing.T) {
 	setCopyParent(other.scip.raw, parent.scip.raw)
 	defer forgetCopy(other.scip.raw)
 	worker := weakScip(other.scip.raw) // what a Copyable plugin's callback sees
-	if worker.owner != parent.scip {
+	if worker.owner.Value() != parent.scip {
 		t.Fatal("a sub-SCIP wrapper must resolve to the parent instance")
 	}
 	v := worker.newVar(other.Vars()[0].raw)
@@ -348,6 +361,11 @@ func TestSubSCIPHandlesRejectedByParent(t *testing.T) {
 	}
 	forgetCopy(other.scip.raw) // SCIP freed the copy
 	expectErrorPanic(t, "handle after the copy is freed", RetcodeInvalidCall, func() { v.Name() })
+	setCopyParent(other.scip.raw, parent.scip.raw) // a later copy reuses the address
+	expectErrorPanic(t, "handle after the address is reused", RetcodeInvalidCall, func() { v.Name() })
+	if fresh := weakScip(other.scip.raw).newVar(other.Vars()[0].raw); fresh.Name() == "" {
+		t.Fatal("a wrapper minted in the new incarnation is alive")
+	}
 }
 
 type nodeKeeper struct{ n *Node }

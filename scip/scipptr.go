@@ -22,8 +22,13 @@ type Scip struct {
 	weak bool
 	// owner is the strong instance a weak (callback) wrapper stands for, so
 	// liveness is judged by instance identity, not by a pointer that is
-	// never cleared and may be reused by a later SCIPcreate.
-	owner *Scip
+	// never cleared and may be reused by a later SCIPcreate. It is held
+	// weakly: a plugin that stores a callback handle must not root the model
+	// through the plugin registry. copyInc identifies the sub-SCIP incarnation
+	// a copy wrapper was minted in, so a later copy at the same address does
+	// not revive it.
+	owner   weak.Pointer[Scip]
+	copyInc uint64
 	// transGen counts FreeTransform calls; handles into the transformed
 	// problem record it at creation and are dead once it moves on. probGen
 	// counts problem replacements (CreateProb, ReadProb), which kill every
@@ -46,18 +51,22 @@ var instances = struct {
 }{m: make(map[*C.SCIP]weak.Pointer[Scip])}
 
 func instanceOf(raw *C.SCIP) *Scip {
-	instances.Lock()
-	defer instances.Unlock()
-	if wp, ok := instances.m[raw]; ok {
-		return wp.Value()
-	}
-	return nil
+	wp, _ := instanceWeak(raw)
+	return wp.Value()
 }
 
-// root returns the strong instance behind s (itself, or a weak wrapper's owner).
+func instanceWeak(raw *C.SCIP) (weak.Pointer[Scip], bool) {
+	instances.Lock()
+	defer instances.Unlock()
+	wp, ok := instances.m[raw]
+	return wp, ok
+}
+
+// root returns the strong instance behind s: itself, or a weak wrapper's
+// owner, which is nil once that owner has been collected.
 func (s *Scip) root() *Scip {
-	if s != nil && s.weak && s.owner != nil {
-		return s.owner
+	if s != nil && s.weak {
+		return s.owner.Value()
 	}
 	return s
 }
@@ -70,8 +79,8 @@ func (s *Scip) alive() bool {
 	if r == nil || r.raw == nil || r.freed.Load() {
 		return false
 	}
-	if s.weak && s.raw != r.raw && !isCopy(s.raw) {
-		return false
+	if s.weak && s.raw != r.raw && copyIncarnation(s.raw) != s.copyInc {
+		return false // the sub-SCIP this wrapper was minted in is gone
 	}
 	return true
 }
