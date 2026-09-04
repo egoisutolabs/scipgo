@@ -158,17 +158,23 @@ func joinDetail(a, b string) string {
 const genNone = ^uint64(0)
 
 func handleErr(op, what string, raw bool, owner *Scip, gen uint64, orig bool, m *Scip) *Error {
-	stageOf := owner
-	if m != nil {
-		stageOf = m // an argument error is about the call on m
-	}
-	switch {
-	case !raw:
+	if !raw {
+		stageOf := owner
+		if m != nil {
+			stageOf = m // an argument error is about the call on m
+		}
 		return &Error{Op: op, Stage: stageOf.stage(), Retcode: RetcodeInvalidData, Detail: "zero " + what}
-	case !owner.alive():
+	}
+	// Resolve the handle's owner once and hold it for the whole check: a
+	// foreign handle's owner is not pinned by the receiving method, so a
+	// second resolution could find it collected in between.
+	r, ok := owner.rootAlive()
+	defer runtime.KeepAlive(r)
+	switch {
+	case !ok:
 		return &Error{Op: op, Stage: StageFree, Retcode: RetcodeInvalidCall, Detail: what + " belongs to a freed model"}
-	case gen != genNone && gen != owner.gen(orig):
-		return &Error{Op: op, Stage: owner.stage(), Retcode: RetcodeInvalidCall, Detail: what + " belongs to a problem that was freed"}
+	case gen != genNone && gen != genOf(r, orig):
+		return &Error{Op: op, Stage: Stage(int(C.SCIPgetStage(r.raw))), Retcode: RetcodeInvalidCall, Detail: what + " belongs to a problem that was freed"}
 	case m != nil && owner.raw != m.raw:
 		return &Error{Op: op, Stage: m.stage(), Retcode: RetcodeInvalidData, Detail: what + " belongs to another model"}
 	}

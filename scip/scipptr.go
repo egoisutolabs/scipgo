@@ -71,28 +71,39 @@ func (s *Scip) root() *Scip {
 	return s
 }
 
-// alive reports whether the instance behind s still exists. A weak wrapper
-// is alive while its owner is and, for a sub-SCIP copy, while SCIP has not
-// freed that copy (its plugins' free callbacks drop it from copyParents).
-func (s *Scip) alive() bool {
+// rootAlive resolves the strong instance behind s exactly once and reports
+// whether it is alive: a weak wrapper is alive while its owner is and, for
+// a sub-SCIP copy, while SCIP has not freed that copy (its plugins' free
+// callbacks drop it from copyParents). Callers that go on to use the
+// instance must hold the returned pointer, not resolve again.
+func (s *Scip) rootAlive() (*Scip, bool) {
 	r := s.root()
 	if r == nil || r.raw == nil || r.freed.Load() {
-		return false
+		return r, false
 	}
 	if s.weak && s.raw != r.raw && copyIncarnation(s.raw) != s.copyInc {
-		return false // the sub-SCIP this wrapper was minted in is gone
+		return r, false // the sub-SCIP this wrapper was minted in is gone
 	}
-	return true
+	return r, true
+}
+
+// alive reports whether the instance behind s still exists.
+func (s *Scip) alive() bool {
+	_, ok := s.rootAlive()
+	return ok
 }
 
 // gen is the generation a handle must carry to be valid: the problem
 // generation for original-problem objects, the transform generation for
 // everything else.
-func (s *Scip) gen(orig bool) uint64 {
+func (s *Scip) gen(orig bool) uint64 { return genOf(s.root(), orig) }
+
+// genOf is gen on an already resolved root.
+func genOf(r *Scip, orig bool) uint64 {
 	if orig {
-		return s.root().probGen
+		return r.probGen
 	}
-	return s.root().transGen
+	return r.transGen
 }
 
 // newProblem records that the problem was replaced: every handle is dead.
