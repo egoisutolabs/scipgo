@@ -110,6 +110,9 @@ func (m Model) TryAddCons(vars []Variable, coefs []float64, lhs, rhs float64, na
 	if err := m.guard("AddCons"); err != nil {
 		return Constraint{}, err
 	}
+	if err := m.checkVars("AddCons", vars...); err != nil {
+		return Constraint{}, err
+	}
 	raw, err := m.scip.createCons(nil, vars, coefs, lhs, rhs, name, false)
 	return m.cons("AddCons", name, raw, err)
 }
@@ -156,6 +159,9 @@ func (m Model) addLocalCons(op string, node *Node, cons ConsBuilder) (Constraint
 	if cons.expr != nil {
 		return Constraint{}, m.invalid(op, RetcodeInvalidCall, "nonlinear constraints cannot be added locally")
 	}
+	if err := m.checkVars(op, cons.vars()...); err != nil {
+		return Constraint{}, err
+	}
 	raw, err := m.scip.createCons(node, cons.vars(), cons.vals(), cons.lhs, cons.rhs, strOrEmpty(cons.name), true)
 	return m.cons(op, strOrEmpty(cons.name), raw, err)
 }
@@ -163,6 +169,12 @@ func (m Model) addLocalCons(op string, node *Node, cons ConsBuilder) (Constraint
 // TryAddConsCoef adds a coefficient to the given linear constraint.
 func (m Model) TryAddConsCoef(c Constraint, v Variable, coef float64) error {
 	if err := m.guard("AddConsCoef"); err != nil {
+		return err
+	}
+	if err := m.checkCons("AddConsCoef", c); err != nil {
+		return err
+	}
+	if err := m.checkVars("AddConsCoef", v); err != nil {
 		return err
 	}
 	return m.wrap("AddConsCoef", m.scip.addConsCoef(c, v, coef), v.Name())
@@ -178,6 +190,12 @@ func (m Model) AddConsCoef(c Constraint, v Variable, coef float64) {
 // partitioning/covering/packing constraint.
 func (m Model) TryAddConsCoefSetppc(c Constraint, v Variable) error {
 	if err := m.guard("AddConsCoefSetppc"); err != nil {
+		return err
+	}
+	if err := m.checkCons("AddConsCoefSetppc", c); err != nil {
+		return err
+	}
+	if err := m.checkVars("AddConsCoefSetppc", v); err != nil {
 		return err
 	}
 	if v.VarType() != VarTypeBinary {
@@ -199,6 +217,11 @@ func (m Model) TryAddConsQuadratic(
 ) (Constraint, error) {
 	if err := m.guard("AddConsQuadratic"); err != nil {
 		return Constraint{}, err
+	}
+	for _, vs := range [][]Variable{linVars, quadVars1, quadVars2} {
+		if err := m.checkVars("AddConsQuadratic", vs...); err != nil {
+			return Constraint{}, err
+		}
 	}
 	raw, err := m.scip.createConsQuadratic(linVars, linCoefs, quadVars1, quadVars2, quadCoefs, lhs, rhs, name)
 	return m.cons("AddConsQuadratic", name, raw, err)
@@ -239,6 +262,9 @@ type consCreator func(vars []Variable, name string) (*C.SCIP_CONS, error)
 
 func (m Model) addConsSet(op string, vars []Variable, name string, create consCreator) (Constraint, error) {
 	if err := m.guard(op); err != nil {
+		return Constraint{}, err
+	}
+	if err := m.checkVars(op, vars...); err != nil {
 		return Constraint{}, err
 	}
 	for _, v := range vars {
@@ -292,6 +318,9 @@ func (m Model) TryAddConsCardinality(vars []Variable, cardinality int, name stri
 	if err := m.guard("AddConsCardinality"); err != nil {
 		return Constraint{}, err
 	}
+	if err := m.checkVars("AddConsCardinality", vars...); err != nil {
+		return Constraint{}, err
+	}
 	raw, err := m.scip.createConsCardinality(vars, cardinality, name)
 	return m.cons("AddConsCardinality", name, raw, err)
 }
@@ -307,6 +336,9 @@ func (m Model) AddConsCardinality(vars []Variable, cardinality int, name string)
 // sum(coefs*vars) <= rhs.
 func (m Model) TryAddConsIndicator(binVar Variable, vars []Variable, coefs []float64, rhs float64, name string) (Constraint, error) {
 	if err := m.guard("AddConsIndicator"); err != nil {
+		return Constraint{}, err
+	}
+	if err := m.checkVars("AddConsIndicator", append([]Variable{binVar}, vars...)...); err != nil {
 		return Constraint{}, err
 	}
 	if binVar.VarType() != VarTypeBinary {
@@ -329,6 +361,9 @@ func (m Model) TryAddConsSOS1(vars []Variable, weights []float64, name string) (
 	if err := m.guard("AddConsSOS1"); err != nil {
 		return Constraint{}, err
 	}
+	if err := m.checkVars("AddConsSOS1", vars...); err != nil {
+		return Constraint{}, err
+	}
 	raw, err := m.scip.createConsSOS1(vars, weights, name)
 	return m.cons("AddConsSOS1", name, raw, err)
 }
@@ -345,6 +380,9 @@ func (m Model) TrySetConsModifiable(c Constraint, modifiable bool) error {
 	if err := m.guard("SetConsModifiable"); err != nil {
 		return err
 	}
+	if err := m.checkCons("SetConsModifiable", c); err != nil {
+		return err
+	}
 	return m.wrap("SetConsModifiable", m.scip.setConsModifiable(c, modifiable), c.Name())
 }
 
@@ -356,6 +394,9 @@ func (m Model) SetConsModifiable(c Constraint, modifiable bool) {
 // TrySetConsRemovable sets the constraint's removable flag.
 func (m Model) TrySetConsRemovable(c Constraint, removable bool) error {
 	if err := m.guard("SetConsRemovable"); err != nil {
+		return err
+	}
+	if err := m.checkCons("SetConsRemovable", c); err != nil {
 		return err
 	}
 	return m.wrap("SetConsRemovable", m.scip.setConsRemovable(c, removable), c.Name())
@@ -370,6 +411,9 @@ func (m Model) SetConsRemovable(c Constraint, removable bool) {
 // processing.
 func (m Model) TrySetConsSeparated(c Constraint, separate bool) error {
 	if err := m.guard("SetConsSeparated"); err != nil {
+		return err
+	}
+	if err := m.checkCons("SetConsSeparated", c); err != nil {
 		return err
 	}
 	return m.wrap("SetConsSeparated", m.scip.setConsSeparated(c, separate), c.Name())

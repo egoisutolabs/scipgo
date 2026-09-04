@@ -212,3 +212,80 @@ func TestTrySetBoundNilNode(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestTreeOpsOutsideSolvingReturnErrors(t *testing.T) {
+	m := createTestModel(t) // StageProblem: the underlying SCIP getters would abort
+	defer m.Free()
+	if _, err := m.TryFocusNode(); asError(t, err).Stage != StageProblem || !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("FocusNode: %v", err)
+	}
+	if _, err := m.TryCreateChild(); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("CreateChild: %v", err)
+	}
+	if _, err := m.TryStartDiving(); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("StartDiving: %v", err)
+	}
+}
+
+func TestConvenienceMethodsReportOwnOp(t *testing.T) {
+	m := NewModel()
+	_, err := m.TrySetDisplayVerbosity(-1)
+	if asError(t, err).Op != "SetDisplayVerbosity" {
+		t.Fatalf("got %v", err)
+	}
+	m.Free()
+	for name, f := range map[string]func() error{
+		"SetTimeLimit":   func() error { _, e := m.TrySetTimeLimit(1); return e },
+		"SetMemoryLimit": func() error { _, e := m.TrySetMemoryLimit(1); return e },
+		"Maximize":       func() error { _, e := m.TryMaximize(); return e },
+		"Minimize":       func() error { _, e := m.TryMinimize(); return e },
+	} {
+		if got := asError(t, f()).Op; got != name {
+			t.Fatalf("Op %q, want %q", got, name)
+		}
+	}
+}
+
+func TestWrapKeepsWrappedRetcode(t *testing.T) {
+	m := createTestModel(t)
+	defer m.Free()
+	_, err := m.TryAddConsNonlinear(ParseExpr("<<< not an expression"), 0, 1, "bad")
+	e := asError(t, err)
+	if e.Retcode == RetcodeInvalidData || e.Detail == "" {
+		t.Fatalf("wrapped SCIP retcode lost: %+v", e)
+	}
+}
+
+func TestZeroHandlesRejected(t *testing.T) {
+	m := createTestModel(t)
+	defer m.Free()
+	x := m.Vars()[0]
+	c := m.Conss()[0]
+	cases := map[string]error{
+		"SetHeurPriority":   m.TrySetHeurPriority(HeurPlugin{}, 1),
+		"SetSepaPriority":   m.TrySetSepaPriority(SeparatorPlugin{}, 1),
+		"AddConsCoef cons":  m.TryAddConsCoef(Constraint{}, x, 1),
+		"AddConsCoef var":   m.TryAddConsCoef(c, Variable{}, 1),
+		"AddConsCoefSetppc": m.TryAddConsCoefSetppc(c, Variable{}),
+		"SetConsModifiable": m.TrySetConsModifiable(Constraint{}, true),
+		"AddCut":            func() error { _, e := m.TryAddCut(Row{}, false); return e }(),
+		"SetUbNode var":     m.TrySetUbNode(&Node{}, Variable{}, 0),
+	}
+	for name, err := range cases {
+		if !errors.Is(err, RetcodeInvalidData) {
+			t.Errorf("%s: got %v", name, err)
+		}
+	}
+	if _, err := m.TryAddCons([]Variable{{}}, []float64{1}, 0, 1, "z"); !errors.Is(err, RetcodeInvalidData) {
+		t.Errorf("AddCons: %v", err)
+	}
+	if _, err := m.TryAddConsSetPart([]Variable{{}}, "z"); !errors.Is(err, RetcodeInvalidData) {
+		t.Errorf("AddConsSetPart: %v", err)
+	}
+	if _, err := m.TryAddConsNonlinear(Variable{}.Expr().Pow(2), 0, 1, "z"); !errors.Is(err, RetcodeInvalidData) {
+		t.Errorf("AddConsNonlinear: %v", err)
+	}
+	if (Variable{}).Expr().String() != "<zero Variable>" {
+		t.Error("zero variable expression string")
+	}
+}

@@ -260,6 +260,9 @@ func (b ConsBuilder) TryAddTo(m Model) (Constraint, error) {
 	}
 	var c Constraint
 	if b.expr != nil {
+		if err := m.checkVars("AddConsNonlinear", b.vars()...); err != nil {
+			return Constraint{}, err
+		}
 		raw, cerr := m.scip.createConsNonlinear(*b.expr, b.vars(), b.vals(), b.lhs, b.rhs, name)
 		c, err = m.cons("AddConsNonlinear", name, raw, cerr)
 	} else {

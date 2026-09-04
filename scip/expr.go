@@ -155,6 +155,9 @@ func (e Expr) String() string {
 	f := func(x float64) string { return strconv.FormatFloat(x, 'g', -1, 64) }
 	switch n.kind {
 	case exprVar:
+		if n.v.raw == nil {
+			return "<zero Variable>"
+		}
 		return n.v.Name()
 	case exprConst:
 		return f(n.c)
@@ -216,6 +219,9 @@ func (e Expr) build(s *Scip) (*C.SCIP_EXPR, error) {
 	}
 	switch n.kind {
 	case exprVar:
+		if n.v.raw == nil {
+			return nil, fmt.Errorf("zero Variable in expression")
+		}
 		rc = C.SCIPcreateExprVar(s.raw, &out, n.v.raw, nil, nil)
 	case exprConst:
 		rc = C.SCIPcreateExprValue(s.raw, &out, C.double(n.c), nil, nil)

@@ -139,16 +139,34 @@ func (m Model) SetObjSense(sense ObjSense) Model {
 }
 
 // TryMaximize sets the objective sense to maximize.
-func (m Model) TryMaximize() (Model, error) { return m.TrySetObjSense(ObjSenseMaximize) }
+func (m Model) TryMaximize() (Model, error) {
+	if err := m.guard("Maximize"); err != nil {
+		return m, err
+	}
+	return m, m.wrap("Maximize", m.scip.setObjSense(ObjSenseMaximize), "")
+}
 
 // TryMinimize sets the objective sense to minimize.
-func (m Model) TryMinimize() (Model, error) { return m.TrySetObjSense(ObjSenseMinimize) }
+func (m Model) TryMinimize() (Model, error) {
+	if err := m.guard("Minimize"); err != nil {
+		return m, err
+	}
+	return m, m.wrap("Minimize", m.scip.setObjSense(ObjSenseMinimize), "")
+}
 
 // Maximize sets the objective sense to maximize. It panics on failure.
-func (m Model) Maximize() Model { return m.SetObjSense(ObjSenseMaximize) }
+func (m Model) Maximize() Model {
+	m, err := m.TryMaximize()
+	must(err)
+	return m
+}
 
 // Minimize sets the objective sense to minimize. It panics on failure.
-func (m Model) Minimize() Model { return m.SetObjSense(ObjSenseMinimize) }
+func (m Model) Minimize() Model {
+	m, err := m.TryMinimize()
+	must(err)
+	return m
+}
 
 // TrySetObjIntegral informs SCIP that the objective value is always integral.
 func (m Model) TrySetObjIntegral() (Model, error) {
@@ -337,6 +355,9 @@ func (m Model) TrySetHeurPriority(h HeurPlugin, priority int32) error {
 	if err := m.guard("SetHeurPriority"); err != nil {
 		return err
 	}
+	if h.raw == nil {
+		return m.invalid("SetHeurPriority", RetcodeInvalidData, "zero HeurPlugin")
+	}
 	return m.call("SetHeurPriority", C.SCIPsetHeurPriority(m.scip.raw, h.raw, C.int(priority)))
 }
 
@@ -347,6 +368,9 @@ func (m Model) SetHeurPriority(h HeurPlugin, priority int32) { must(m.TrySetHeur
 func (m Model) TrySetSepaPriority(s SeparatorPlugin, priority int32) error {
 	if err := m.guard("SetSepaPriority"); err != nil {
 		return err
+	}
+	if s.raw == nil {
+		return m.invalid("SetSepaPriority", RetcodeInvalidData, "zero SeparatorPlugin")
 	}
 	return m.call("SetSepaPriority", C.SCIPsetSepaPriority(m.scip.raw, s.raw, C.int(priority)))
 }
@@ -360,6 +384,9 @@ func (m Model) SetSepaPriority(s SeparatorPlugin, priority int32) {
 func (m Model) TrySetPresolPriority(p PresolverPlugin, priority int32) error {
 	if err := m.guard("SetPresolPriority"); err != nil {
 		return err
+	}
+	if p.raw == nil {
+		return m.invalid("SetPresolPriority", RetcodeInvalidData, "zero PresolverPlugin")
 	}
 	return m.call("SetPresolPriority", C.SCIPsetPresolPriority(m.scip.raw, p.raw, C.int(priority)))
 }
@@ -522,7 +549,10 @@ func (m Model) PrintVersion() { m.scip.printVersion() }
 
 // TrySetDisplayVerbosity sets the display/verblevel parameter.
 func (m Model) TrySetDisplayVerbosity(level int32) (Model, error) {
-	return m.SetIntParam("display/verblevel", level)
+	if err := m.guard("SetDisplayVerbosity"); err != nil {
+		return m, err
+	}
+	return m, m.wrap("SetDisplayVerbosity", m.scip.setIntParam("display/verblevel", level), "display/verblevel")
 }
 
 // SetDisplayVerbosity sets the display/verblevel parameter. It panics on failure.
@@ -542,7 +572,10 @@ func (m Model) HideOutput() Model { return m.SetDisplayVerbosity(0) }
 
 // TrySetTimeLimit sets the time limit for the optimization model, in seconds.
 func (m Model) TrySetTimeLimit(timeLimit float64) (Model, error) {
-	return m.SetRealParam("limits/time", timeLimit)
+	if err := m.guard("SetTimeLimit"); err != nil {
+		return m, err
+	}
+	return m, m.wrap("SetTimeLimit", m.scip.setRealParam("limits/time", timeLimit), "limits/time")
 }
 
 // SetTimeLimit sets the time limit in seconds. It panics on failure.
@@ -554,7 +587,10 @@ func (m Model) SetTimeLimit(timeLimit float64) Model {
 
 // TrySetMemoryLimit sets the memory limit for the optimization model, in MB.
 func (m Model) TrySetMemoryLimit(memoryLimit float64) (Model, error) {
-	return m.SetRealParam("limits/memory", memoryLimit)
+	if err := m.guard("SetMemoryLimit"); err != nil {
+		return m, err
+	}
+	return m, m.wrap("SetMemoryLimit", m.scip.setRealParam("limits/memory", memoryLimit), "limits/memory")
 }
 
 // SetMemoryLimit sets the memory limit in MB. It panics on failure.

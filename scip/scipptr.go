@@ -833,7 +833,7 @@ func (s *Scip) addSol(sol *Solution) (bool, error) {
 	if C.SCIPsolIsPartial(sol.raw) == 1 {
 		raw := sol.raw
 		sol.raw = nil // SCIPaddSolFree owns it from here, even if it fails
-		return feasibleOr(C.SCIPaddSolFree(s.raw, &raw, &feasible), feasible)
+		return s.feasibleOr(C.SCIPaddSolFree(s.raw, &raw, &feasible), raw, feasible)
 	}
 	if C.SCIPsolIsOriginal(sol.raw) == 1 {
 		if err := retcodeError(C.SCIPcheckSolOrig(s.raw, sol.raw, &feasible, 0, 1)); err != nil {
@@ -847,7 +847,7 @@ func (s *Scip) addSol(sol *Solution) (bool, error) {
 		if feasible == 1 {
 			raw := sol.raw
 			sol.raw = nil
-			return feasibleOr(C.SCIPaddSolFree(s.raw, &raw, &feasible), feasible)
+			return s.feasibleOr(C.SCIPaddSolFree(s.raw, &raw, &feasible), raw, feasible)
 		} else {
 			// Not added: we own the solution, so free it to avoid a leak.
 			raw := sol.raw
@@ -860,12 +860,18 @@ func (s *Scip) addSol(sol *Solution) (bool, error) {
 	// is stored.
 	raw := sol.raw
 	sol.raw = nil
-	return feasibleOr(C.SCIPtrySolFree(s.raw, &raw, 0, 1, 1, 1, 1, &feasible), feasible)
+	return s.feasibleOr(C.SCIPtrySolFree(s.raw, &raw, 0, 1, 1, 1, 1, &feasible), raw, feasible)
 }
 
 // feasibleOr turns a retcode plus SCIP's stored flag into addSol's result.
-func feasibleOr(rc C.SCIP_RETCODE, feasible C.uint) (bool, error) {
+// The SCIP*Free variants clear raw once they have freed the solution; if they
+// fail earlier (e.g. a panicking constraint handler during the check) raw is
+// still ours, so free it rather than leak it.
+func (s *Scip) feasibleOr(rc C.SCIP_RETCODE, raw *C.SCIP_SOL, feasible C.uint) (bool, error) {
 	if err := retcodeError(rc); err != nil {
+		if raw != nil {
+			C.SCIPfreeSol(s.raw, &raw)
+		}
 		return false, err
 	}
 	return feasible != 0, nil

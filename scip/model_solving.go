@@ -145,6 +145,10 @@ func (m Model) TryFocusNode() (Node, error) {
 	if err := m.guard("FocusNode"); err != nil {
 		return Node{}, err
 	}
+	// SCIPgetFocusNode aborts the process outside these stages.
+	if err := m.requireStage("FocusNode", StageInitPresolve, StagePresolving, StageExitPresolve, StageSolving); err != nil {
+		return Node{}, err
+	}
 	raw := m.scip.focusNode()
 	if raw == nil {
 		return Node{}, m.invalid("FocusNode", RetcodeInvalidCall, "no focus node; not solving")
@@ -163,6 +167,10 @@ func (m Model) FocusNode() Node {
 // TryCreateChild creates a new child of the focus node and returns it.
 func (m Model) TryCreateChild() (Node, error) {
 	if err := m.guard("CreateChild"); err != nil {
+		return Node{}, err
+	}
+	// createChild reads SCIPgetLocalTransEstimate, which aborts outside solving.
+	if err := m.requireStage("CreateChild", StageSolving); err != nil {
 		return Node{}, err
 	}
 	raw, err := m.scip.createChild()
@@ -251,6 +259,9 @@ func (m Model) TryAddCut(cut Row, forceCut bool) (bool, error) {
 	if err := m.guard("AddCut"); err != nil {
 		return false, err
 	}
+	if cut.raw == nil {
+		return false, m.invalid("AddCut", RetcodeInvalidData, "zero Row")
+	}
 	infeasible, err := m.scip.addRow(cut, forceCut)
 	return infeasible, m.wrap("AddCut", err, cut.Name())
 }
@@ -292,6 +303,10 @@ func (m Model) TryStartDiving() (*Diver, error) {
 	if err := m.guard("StartDiving"); err != nil {
 		return nil, err
 	}
+	// SCIPisLPConstructed and SCIPstartDive abort outside solving.
+	if err := m.requireStage("StartDiving", StageSolving); err != nil {
+		return nil, err
+	}
 	// Since SCIP 10, SCIPstartDive requires the current node's LP to be
 	// constructed first; construct it on demand.
 	if C.SCIPisLPConstructed(m.scip.raw) == 0 {
@@ -327,6 +342,9 @@ func (m Model) TrySetUbNode(node *Node, v Variable, ub float64) error {
 	if node == nil {
 		return m.invalid("SetUbNode", RetcodeInvalidData, "nil node")
 	}
+	if err := m.checkVars("SetUbNode", v); err != nil {
+		return err
+	}
 	return m.call("SetUbNode", C.SCIPchgVarUbNode(m.scip.raw, node.raw, v.raw, C.double(ub)))
 }
 
@@ -341,6 +359,9 @@ func (m Model) TrySetLbNode(node *Node, v Variable, lb float64) error {
 	}
 	if node == nil {
 		return m.invalid("SetLbNode", RetcodeInvalidData, "nil node")
+	}
+	if err := m.checkVars("SetLbNode", v); err != nil {
+		return err
 	}
 	return m.call("SetLbNode", C.SCIPchgVarLbNode(m.scip.raw, node.raw, v.raw, C.double(lb)))
 }

@@ -5,7 +5,10 @@ package scip
 */
 import "C"
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Stage is a SCIP solving stage, as reported by Model.Stage and carried by
 // Error.
@@ -101,21 +104,64 @@ func (m Model) guard(op string) error {
 // values keep their code; other errors (argument validation, expression
 // building) become RetcodeInvalidData with the message as detail.
 func (m Model) wrap(op string, err error, detail string) error {
-	switch e := err.(type) {
-	case nil:
+	if err == nil {
 		return nil
-	case *Error:
-		return e
-	case *CallbackPanic:
-		return e
-	case Retcode:
-		return &Error{Op: op, Stage: m.scip.stage(), Retcode: e, Detail: detail}
-	default:
-		if detail != "" {
-			detail += ": "
-		}
-		return &Error{Op: op, Stage: m.scip.stage(), Retcode: RetcodeInvalidData, Detail: detail + e.Error()}
 	}
+	var e *Error
+	if errors.As(err, &e) {
+		return e
+	}
+	var cp *CallbackPanic
+	if errors.As(err, &cp) {
+		return cp
+	}
+	var rc Retcode
+	if errors.As(err, &rc) {
+		if err != rc { // wrapped with context (e.g. expression building): keep it
+			detail = joinDetail(detail, err.Error())
+		}
+		return &Error{Op: op, Stage: m.scip.stage(), Retcode: rc, Detail: detail}
+	}
+	return &Error{Op: op, Stage: m.scip.stage(), Retcode: RetcodeInvalidData, Detail: joinDetail(detail, err.Error())}
+}
+
+func joinDetail(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + ": " + b
+}
+
+// requireStage rejects a call outside the stages SCIP permits for it. It
+// exists for SCIP getters that abort the process on a wrong stage instead of
+// returning a retcode.
+func (m Model) requireStage(op string, allowed ...Stage) error {
+	st := m.scip.stage()
+	for _, a := range allowed {
+		if st == a {
+			return nil
+		}
+	}
+	return &Error{Op: op, Stage: st, Retcode: RetcodeInvalidCall, Detail: "not permitted in this stage"}
+}
+
+// checkVars rejects zero Variables, which a failed lookup such as Model.Var
+// returns; SCIP would dereference the nil pointer.
+func (m Model) checkVars(op string, vars ...Variable) error {
+	for _, v := range vars {
+		if v.raw == nil {
+			return m.invalid(op, RetcodeInvalidData, "zero Variable")
+		}
+	}
+	return nil
+}
+
+// checkCons rejects a zero Constraint.
+func (m Model) checkCons(op string, c Constraint) error {
+	if c.raw == nil {
+		return m.invalid(op, RetcodeInvalidData, "zero Constraint")
+	}
+	return nil
 }
 
 // invalid builds an *Error for an argument the binding rejects itself.
