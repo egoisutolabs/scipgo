@@ -243,6 +243,9 @@ func (m Model) TryFree() error {
 	if m.scip == nil {
 		return nil
 	}
+	if m.scip.weak {
+		return m.invalid("Free", RetcodeInvalidCall, "the Model passed to a callback is owned by the running solve")
+	}
 	stage := m.scip.stage() // free() clears the instance, so read it first
 	if err := m.scip.free(); err != nil {
 		if rc, ok := err.(Retcode); ok {
@@ -287,7 +290,7 @@ func (m Model) FindHeur(name string) (HeurPlugin, bool) {
 	if raw == nil {
 		return HeurPlugin{}, false
 	}
-	return HeurPlugin{raw: raw}, true
+	return HeurPlugin{raw: raw, owner: m.scip.raw}, true
 }
 
 // Heurs returns all primal heuristics included in the model.
@@ -296,7 +299,7 @@ func (m Model) Heurs() []HeurPlugin {
 	arr := C.SCIPgetHeurs(m.scip.raw)
 	out := make([]HeurPlugin, 0, n)
 	for i := 0; i < n; i++ {
-		out = append(out, HeurPlugin{raw: cAt(arr, i)})
+		out = append(out, HeurPlugin{raw: cAt(arr, i), owner: m.scip.raw})
 	}
 	return out
 }
@@ -307,7 +310,7 @@ func (m Model) Separators() []SeparatorPlugin {
 	arr := C.SCIPgetSepas(m.scip.raw)
 	out := make([]SeparatorPlugin, 0, n)
 	for i := 0; i < n; i++ {
-		out = append(out, SeparatorPlugin{raw: cAt(arr, i)})
+		out = append(out, SeparatorPlugin{raw: cAt(arr, i), owner: m.scip.raw})
 	}
 	return out
 }
@@ -318,7 +321,7 @@ func (m Model) FindSeparator(name string) (SeparatorPlugin, bool) {
 	if raw == nil {
 		return SeparatorPlugin{}, false
 	}
-	return SeparatorPlugin{raw: raw}, true
+	return SeparatorPlugin{raw: raw, owner: m.scip.raw}, true
 }
 
 // Presolvers returns all presolvers included in the model.
@@ -327,7 +330,7 @@ func (m Model) Presolvers() []PresolverPlugin {
 	arr := C.SCIPgetPresols(m.scip.raw)
 	out := make([]PresolverPlugin, 0, n)
 	for i := 0; i < n; i++ {
-		out = append(out, PresolverPlugin{raw: cAt(arr, i)})
+		out = append(out, PresolverPlugin{raw: cAt(arr, i), owner: m.scip.raw})
 	}
 	return out
 }
@@ -338,7 +341,7 @@ func (m Model) FindPresolver(name string) (PresolverPlugin, bool) {
 	if raw == nil {
 		return PresolverPlugin{}, false
 	}
-	return PresolverPlugin{raw: raw}, true
+	return PresolverPlugin{raw: raw, owner: m.scip.raw}, true
 }
 
 // FindNodesel finds an included node selector by its name (e.g. "bfs"),
@@ -359,6 +362,9 @@ func (m Model) TrySetHeurPriority(h HeurPlugin, priority int32) error {
 	if h.raw == nil {
 		return m.invalid("SetHeurPriority", RetcodeInvalidData, "zero HeurPlugin")
 	}
+	if h.owner != m.scip.raw {
+		return m.invalid("SetHeurPriority", RetcodeInvalidData, "HeurPlugin belongs to another model")
+	}
 	return m.call("SetHeurPriority", C.SCIPsetHeurPriority(m.scip.raw, h.raw, C.int(priority)))
 }
 
@@ -372,6 +378,9 @@ func (m Model) TrySetSepaPriority(s SeparatorPlugin, priority int32) error {
 	}
 	if s.raw == nil {
 		return m.invalid("SetSepaPriority", RetcodeInvalidData, "zero SeparatorPlugin")
+	}
+	if s.owner != m.scip.raw {
+		return m.invalid("SetSepaPriority", RetcodeInvalidData, "SeparatorPlugin belongs to another model")
 	}
 	return m.call("SetSepaPriority", C.SCIPsetSepaPriority(m.scip.raw, s.raw, C.int(priority)))
 }
@@ -389,6 +398,9 @@ func (m Model) TrySetPresolPriority(p PresolverPlugin, priority int32) error {
 	if p.raw == nil {
 		return m.invalid("SetPresolPriority", RetcodeInvalidData, "zero PresolverPlugin")
 	}
+	if p.owner != m.scip.raw {
+		return m.invalid("SetPresolPriority", RetcodeInvalidData, "PresolverPlugin belongs to another model")
+	}
 	return m.call("SetPresolPriority", C.SCIPsetPresolPriority(m.scip.raw, p.raw, C.int(priority)))
 }
 
@@ -402,7 +414,7 @@ func (m Model) TryIncludeBranchRule(name, desc string, priority, maxdepth int32,
 	if err := m.guard("IncludeBranchRule"); err != nil {
 		return err
 	}
-	if rule == nil {
+	if isNilPlugin(rule) {
 		return m.invalid("IncludeBranchRule", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeBranchRule", m.scip.includeBranchRule(name, desc, priority, maxdepth, maxbounddist, rule), name)
@@ -419,7 +431,7 @@ func (m Model) TryIncludeNodesel(name, desc string, stdPriority, memSavePriority
 	if err := m.guard("IncludeNodesel"); err != nil {
 		return err
 	}
-	if nodesel == nil {
+	if isNilPlugin(nodesel) {
 		return m.invalid("IncludeNodesel", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeNodesel", m.scip.includeNodesel(name, desc, stdPriority, memSavePriority, nodesel), name)
@@ -435,7 +447,7 @@ func (m Model) TryIncludeHeur(name, desc string, priority int32, dispchar byte, 
 	if err := m.guard("IncludeHeur"); err != nil {
 		return err
 	}
-	if heur == nil {
+	if isNilPlugin(heur) {
 		return m.invalid("IncludeHeur", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeHeur", m.scip.includeHeur(name, desc, priority, dispchar, freq, freqofs, maxdepth, timing, usessubscip, heur), name)
@@ -451,7 +463,7 @@ func (m Model) TryIncludeSeparator(name, desc string, priority, freq int32, maxb
 	if err := m.guard("IncludeSeparator"); err != nil {
 		return err
 	}
-	if sep == nil {
+	if isNilPlugin(sep) {
 		return m.invalid("IncludeSeparator", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeSeparator", m.scip.includeSeparator(name, desc, priority, freq, maxbounddist, usesubscip, delay, sep), name)
@@ -467,7 +479,7 @@ func (m Model) TryIncludeEventhdlr(name, desc string, eventhdlr Eventhdlr) error
 	if err := m.guard("IncludeEventhdlr"); err != nil {
 		return err
 	}
-	if eventhdlr == nil {
+	if isNilPlugin(eventhdlr) {
 		return m.invalid("IncludeEventhdlr", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeEventhdlr", m.scip.includeEventhdlr(name, desc, eventhdlr), name)
@@ -483,7 +495,7 @@ func (m Model) TryIncludePricer(name, desc string, priority int32, delay bool, p
 	if err := m.guard("IncludePricer"); err != nil {
 		return err
 	}
-	if pricer == nil {
+	if isNilPlugin(pricer) {
 		return m.invalid("IncludePricer", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludePricer", m.scip.includePricer(name, desc, priority, delay, pricer), name)
@@ -503,7 +515,7 @@ func (m Model) TryIncludeConshdlr(name, desc string, enfopriority, checkpriority
 	if err := m.guard("IncludeConshdlr"); err != nil {
 		return err
 	}
-	if conshdlr == nil {
+	if isNilPlugin(conshdlr) {
 		return m.invalid("IncludeConshdlr", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeConshdlr", m.scip.includeConshdlr(name, desc, enfopriority, checkpriority, defaultConshdlrOpts, conshdlr), name)
@@ -748,6 +760,9 @@ func (m Model) TrySetPresolving(presolving ParamSetting) (Model, error) {
 	if err := m.guard("SetPresolving"); err != nil {
 		return m, err
 	}
+	if presolving < ParamSettingDefault || presolving > ParamSettingOff {
+		return m, m.invalid("SetPresolving", RetcodeInvalidData, "unknown ParamSetting")
+	}
 	return m, m.wrap("SetPresolving", m.scip.setPresolving(presolving), "")
 }
 
@@ -763,6 +778,9 @@ func (m Model) TrySetSeparating(separating ParamSetting) (Model, error) {
 	if err := m.guard("SetSeparating"); err != nil {
 		return m, err
 	}
+	if separating < ParamSettingDefault || separating > ParamSettingOff {
+		return m, m.invalid("SetSeparating", RetcodeInvalidData, "unknown ParamSetting")
+	}
 	return m, m.wrap("SetSeparating", m.scip.setSeparating(separating), "")
 }
 
@@ -777,6 +795,9 @@ func (m Model) SetSeparating(separating ParamSetting) Model {
 func (m Model) TrySetHeuristics(heuristics ParamSetting) (Model, error) {
 	if err := m.guard("SetHeuristics"); err != nil {
 		return m, err
+	}
+	if heuristics < ParamSettingDefault || heuristics > ParamSettingOff {
+		return m, m.invalid("SetHeuristics", RetcodeInvalidData, "unknown ParamSetting")
 	}
 	return m, m.wrap("SetHeuristics", m.scip.setHeuristics(heuristics), "")
 }

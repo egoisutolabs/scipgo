@@ -8,6 +8,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"reflect"
 )
 
 // Stage is a SCIP solving stage, as reported by Model.Stage and carried by
@@ -183,6 +184,20 @@ func (m Model) checkNode(op string, n *Node) error {
 		return m.invalid(op, RetcodeInvalidData, "nil Node")
 	}
 	return m.checkHandle(op, "Node", n.raw != nil, n.scip)
+}
+
+// isNilPlugin reports whether a plugin interface value is nil, including a
+// typed nil pointer stored in it, which == nil does not catch.
+func isNilPlugin(p any) bool {
+	if p == nil {
+		return true
+	}
+	v := reflect.ValueOf(p)
+	switch v.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Func, reflect.Interface, reflect.Chan:
+		return v.IsNil()
+	}
+	return false
 }
 
 // validVarType reports whether t is one of the declared VarType constants;

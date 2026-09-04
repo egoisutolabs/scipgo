@@ -585,7 +585,11 @@ func (s *Scip) createCons(node *Node, vars []Variable, coefs []float64, lhs, rhs
 	}
 
 	if C.SCIPgetStage(s.raw) == C.SCIP_STAGE_SOLVING {
+		// SCIP holds its own reference from SCIPaddCons*; drop ours but keep
+		// the pointer, since SCIPreleaseCons clears the variable it is given.
+		kept := cons
 		mustOK(C.SCIPreleaseCons(s.raw, &cons))
+		return kept, nil
 	}
 	return cons, nil
 }

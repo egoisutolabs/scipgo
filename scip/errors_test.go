@@ -2,6 +2,7 @@ package scip
 
 import (
 	"errors"
+	"sync/atomic"
 	"testing"
 )
 
@@ -376,5 +377,65 @@ func TestEnumAndArgumentValidation(t *testing.T) {
 	}
 	if _, err := NewRow().Source(SourceSepa(SeparatorPlugin{})).TryAddTo(m); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("zero row source: %v", err)
+	}
+}
+
+type solvingConsHeur struct {
+	consOK, freeRejected *atomic.Bool
+}
+
+func (h solvingConsHeur) Execute(model Model, _ HeurTiming, _ bool) HeurResult {
+	if h.consOK.Load() {
+		return HeurResult{State: HeurResultStateDidNotRun}
+	}
+	vars := model.Vars()
+	c, err := model.TryAddCons(vars[:1], []float64{1}, NegInfinity, Infinity, "added-while-solving")
+	h.consOK.Store(err == nil && c.raw != nil && c.Name() == "added-while-solving")
+	h.freeRejected.Store(errors.Is(model.TryFree(), RetcodeInvalidCall))
+	return HeurResult{State: HeurResultStateDidNotRun}
+}
+
+func TestConsAddedWhileSolvingIsUsable(t *testing.T) {
+	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
+	defer m.Free()
+	h := solvingConsHeur{new(atomic.Bool), new(atomic.Bool)}
+	m.Add(NewHeur(h).Name("consadd").Freq(1))
+	m.Solve()
+	if !h.consOK.Load() {
+		t.Fatal("constraint added during solving came back zero or unnamed")
+	}
+	if !h.freeRejected.Load() {
+		t.Fatal("TryFree on the callback Model should be rejected")
+	}
+}
+
+func TestRoundFiveValidation(t *testing.T) {
+	a := createTestModel(t)
+	b := createTestModel(t)
+	defer b.Free()
+	xa := a.Vars()[0]
+	if _, err := b.TryAddConsNonlinear(xa.Expr().Pow(2), 0, 1, "f"); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("foreign var in expr: %v", err)
+	}
+	ha, _ := a.FindHeur("rounding")
+	if err := b.TrySetHeurPriority(ha, 1); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("foreign heur: %v", err)
+	}
+	for name, f := range map[string]func() (Model, error){
+		"presolving": func() (Model, error) { return b.TrySetPresolving(ParamSetting(9)) },
+		"separating": func() (Model, error) { return b.TrySetSeparating(ParamSetting(-1)) },
+		"heuristics": func() (Model, error) { return b.TrySetHeuristics(ParamSetting(9)) },
+	} {
+		if _, err := f(); !errors.Is(err, RetcodeInvalidData) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	var typedNil *cuttingOffBranchingRule
+	if err := b.TryIncludeBranchRule("tn", "", 1, -1, 1, typedNil); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("typed nil plugin: %v", err)
+	}
+	a.Free()
+	if _, err := b.TryAddConsNonlinear(xa.Expr(), 0, 1, "g"); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("dangling var in expr: %v", err)
 	}
 }

@@ -578,7 +578,7 @@ func GoSepaExecLp(scip *C.SCIP, sepa *C.SCIP_SEPA, result *C.SCIP_RESULT, allowl
 	}
 
 	model := solvingModel(scip)
-	sepRes := s.ExecuteLP(model, SeparatorPlugin{raw: sepa})
+	sepRes := s.ExecuteLP(model, SeparatorPlugin{raw: sepa, owner: scip})
 	*result = separationResultToC(sepRes)
 	ret = C.SCIP_OKAY
 	return

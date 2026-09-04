@@ -7,7 +7,8 @@ import "C"
 
 // PresolverPlugin is a wrapper for a SCIP presolver plugin.
 type PresolverPlugin struct {
-	raw *C.SCIP_PRESOL
+	raw   *C.SCIP_PRESOL
+	owner *C.SCIP // instance the plugin is included in
 }
 
 // Inner returns the raw pointer to the underlying SCIP_PRESOL.

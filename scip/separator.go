@@ -51,7 +51,8 @@ func separationResultToC(r SeparationResult) C.SCIP_RESULT {
 
 // SeparatorPlugin is a wrapper struct for the internal SCIP separator object.
 type SeparatorPlugin struct {
-	raw *C.SCIP_SEPA
+	raw   *C.SCIP_SEPA
+	owner *C.SCIP // instance the plugin is included in
 }
 
 // Inner returns the internal raw pointer of the separator.

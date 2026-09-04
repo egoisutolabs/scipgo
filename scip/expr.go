@@ -219,8 +219,13 @@ func (e Expr) build(s *Scip) (*C.SCIP_EXPR, error) {
 	}
 	switch n.kind {
 	case exprVar:
-		if n.v.raw == nil {
+		switch {
+		case n.v.raw == nil:
 			return nil, fmt.Errorf("zero Variable in expression")
+		case n.v.scip == nil || n.v.scip.raw == nil:
+			return nil, fmt.Errorf("variable %s belongs to a freed model", n.v.Name())
+		case n.v.scip.raw != s.raw:
+			return nil, fmt.Errorf("variable %s belongs to another model", n.v.Name())
 		}
 		rc = C.SCIPcreateExprVar(s.raw, &out, n.v.raw, nil, nil)
 	case exprConst:
