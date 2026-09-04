@@ -161,3 +161,53 @@ func TestCallbackPanicNamesPricer(t *testing.T) {
 		t.Fatalf("got %T %v", err, err)
 	}
 }
+
+type panickingConshdlr struct{}
+
+func (panickingConshdlr) Check(Model, ConshdlrPlugin, Solution) bool { panic("check boom") }
+func (panickingConshdlr) Enforce(Model, ConshdlrPlugin) ConshdlrResult {
+	return ConshdlrResultFeasible
+}
+
+func TestAddSolCallbackPanicConsumesSolution(t *testing.T) {
+	m := createTestModel(t)
+	defer m.Free()
+	m.IncludeConshdlr("boom", "", -1, -1, panickingConshdlr{})
+	sol := m.CreateOrigSol()
+	err := m.AddSol(&sol)
+	var cp *CallbackPanic
+	if !errors.As(err, &cp) || cp.Value != "check boom" {
+		t.Fatalf("got %T %v", err, err)
+	}
+	if sol.raw != nil {
+		t.Fatal("solution should be consumed on the panic path")
+	}
+}
+
+func TestBuilderAddToWithoutProblem(t *testing.T) {
+	m := NewModel().HideOutput().IncludeDefaultPlugins() // StageInit: count getters would abort
+	defer m.Free()
+	_, err := NewVar().TryAddTo(m)
+	if e := asError(t, err); e.Op != "AddVar" || !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("unexpected %+v", e)
+	}
+	if _, err := NewCons().Le(1).TryAddTo(m); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("got %v", err)
+	}
+	// an explicit name skips the count getter and reaches SCIP, which rejects it
+	if _, err := NewVar().Name("x").TryAddTo(m); !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestTrySetBoundNilNode(t *testing.T) {
+	m := createTestModel(t)
+	defer m.Free()
+	x := m.Vars()[0]
+	if err := m.TrySetUbNode(nil, x, 0); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("got %v", err)
+	}
+	if err := m.TrySetLbNode(m.BestNode(), x, 0); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("got %v", err)
+	}
+}

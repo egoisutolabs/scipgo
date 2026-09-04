@@ -324,6 +324,9 @@ func (m Model) TrySetUbNode(node *Node, v Variable, ub float64) error {
 	if err := m.guard("SetUbNode"); err != nil {
 		return err
 	}
+	if node == nil {
+		return m.invalid("SetUbNode", RetcodeInvalidData, "nil node")
+	}
 	return m.call("SetUbNode", C.SCIPchgVarUbNode(m.scip.raw, node.raw, v.raw, C.double(ub)))
 }
 
@@ -335,6 +338,9 @@ func (m Model) SetUbNode(node *Node, v Variable, ub float64) { must(m.TrySetUbNo
 func (m Model) TrySetLbNode(node *Node, v Variable, lb float64) error {
 	if err := m.guard("SetLbNode"); err != nil {
 		return err
+	}
+	if node == nil {
+		return m.invalid("SetLbNode", RetcodeInvalidData, "nil node")
 	}
 	return m.call("SetLbNode", C.SCIPchgVarLbNode(m.scip.raw, node.raw, v.raw, C.double(lb)))
 }

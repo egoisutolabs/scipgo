@@ -103,7 +103,24 @@ func (b VarBuilder) TryAddTo(m Model) (Variable, error) {
 	if err := m.guard("AddVar"); err != nil {
 		return Variable{}, err
 	}
-	return m.TryAddVar(b.lb, b.ub, b.obj, b.defaultName(m.NVars()), b.varType)
+	name, err := builderName(m, "AddVar", b.name, func() string { return b.defaultName(m.NVars()) })
+	if err != nil {
+		return Variable{}, err
+	}
+	return m.TryAddVar(b.lb, b.ub, b.obj, name, b.varType)
+}
+
+// builderName returns the explicit name, or the default built from a count
+// getter, which SCIP only permits once a problem exists (it aborts the
+// process otherwise), so the stage is checked first.
+func builderName(m Model, op string, explicit *string, def func() string) (string, error) {
+	if explicit != nil {
+		return *explicit, nil
+	}
+	if st := m.Stage(); st < StageProblem || st == StageTransforming || st > StageExitSolve {
+		return "", m.invalid(op, RetcodeInvalidCall, "no problem exists to name the object after")
+	}
+	return def(), nil
 }
 
 // AddToSolving adds the variable to a model in the Solving stage.
@@ -237,9 +254,11 @@ func (b ConsBuilder) TryAddTo(m Model) (Constraint, error) {
 	if err := m.guard("AddCons"); err != nil {
 		return Constraint{}, err
 	}
-	name := b.defaultName(m.NConss())
+	name, err := builderName(m, "AddCons", b.name, func() string { return b.defaultName(m.NConss()) })
+	if err != nil {
+		return Constraint{}, err
+	}
 	var c Constraint
-	var err error
 	if b.expr != nil {
 		raw, cerr := m.scip.createConsNonlinear(*b.expr, b.vars(), b.vals(), b.lhs, b.rhs, name)
 		c, err = m.cons("AddConsNonlinear", name, raw, cerr)

@@ -96,7 +96,9 @@ func (s *Scip) free() error {
 		}
 	}
 
-	s.scipFree(raw)
+	if err := s.scipFree(raw); err != nil && firstErr == nil {
+		firstErr = err
+	}
 	// Drop panics stashed by plugin free callbacks: the raw pointer may be
 	// reused by a later SCIPcreate, which would otherwise rethrow them.
 	if ps := takePanics(s.raw); len(ps) > 0 && firstErr == nil {
@@ -404,9 +406,12 @@ func (s *Scip) holdsTPI() bool {
 	return C.SCIPsyncstoreIsInitialized(C.SCIPgetSyncstore(s.raw)) != 0
 }
 
-func tpiInit(nthreads int32) {
-	mustOK(C.SCIPtpiInit(C.int(nthreads), C.int(math.MaxInt32), 0))
+func tpiInit(nthreads int32) error {
+	if err := retcodeError(C.SCIPtpiInit(C.int(nthreads), C.int(math.MaxInt32), 0)); err != nil {
+		return err
+	}
 	tpiPool.live = true
+	return nil
 }
 
 func (s *Scip) solveConcurrent() error {
@@ -416,11 +421,15 @@ func (s *Scip) solveConcurrent() error {
 		// Re-solve: SCIP reuses its solvers and expects the pool to exist.
 		if !tpiPool.live {
 			n, _ := s.intParam("parallel/maxnthreads") // an upper bound on the solver count
-			tpiInit(max(n, 1))
+			if err := tpiInit(max(n, 1)); err != nil {
+				return err
+			}
 		}
 	} else if tpiPool.live {
 		// SCIP is about to create a pool; drop the one another instance left.
-		mustOK(C.SCIPtpiExit())
+		if err := retcodeError(C.SCIPtpiExit()); err != nil {
+			return err
+		}
 		tpiPool.live = false
 	}
 	err := retcodeError(C.SCIPsolveConcurrent(s.raw))
@@ -430,18 +439,21 @@ func (s *Scip) solveConcurrent() error {
 
 // scipFree calls SCIPfree, giving it a thread pool to destroy if this
 // instance expects one and another instance already destroyed it.
-func (s *Scip) scipFree(raw *C.SCIP) {
+func (s *Scip) scipFree(raw *C.SCIP) error {
 	if !s.holdsTPI() {
 		C.SCIPfree(&raw)
-		return
+		return nil
 	}
 	tpiPool.Lock()
 	defer tpiPool.Unlock()
 	if !tpiPool.live {
-		tpiInit(1)
+		if err := tpiInit(1); err != nil {
+			return err // SCIPfree would crash in SCIPtpiExit; leaking beats crashing
+		}
 	}
 	C.SCIPfree(&raw)
 	tpiPool.live = false
+	return nil
 }
 
 func (s *Scip) nSols() int { return int(C.SCIPgetNSols(s.raw)) }
@@ -820,22 +832,22 @@ func (s *Scip) addSol(sol *Solution) (bool, error) {
 	// add them directly for the completesol heuristic to complete.
 	if C.SCIPsolIsPartial(sol.raw) == 1 {
 		raw := sol.raw
-		if err := retcodeError(C.SCIPaddSolFree(s.raw, &raw, &feasible)); err != nil {
-			return false, err
-		}
-		sol.raw = nil
-		return feasible != 0, nil
+		sol.raw = nil // SCIPaddSolFree owns it from here, even if it fails
+		return feasibleOr(C.SCIPaddSolFree(s.raw, &raw, &feasible), feasible)
 	}
 	if C.SCIPsolIsOriginal(sol.raw) == 1 {
 		if err := retcodeError(C.SCIPcheckSolOrig(s.raw, sol.raw, &feasible, 0, 1)); err != nil {
+			// The check failed (typically a panicking constraint handler);
+			// we still own the solution, so consume it as promised.
+			raw := sol.raw
+			sol.raw = nil
+			C.SCIPfreeSol(s.raw, &raw)
 			return false, err
 		}
 		if feasible == 1 {
 			raw := sol.raw
-			if err := retcodeError(C.SCIPaddSolFree(s.raw, &raw, &feasible)); err != nil {
-				return false, err
-			}
 			sol.raw = nil
+			return feasibleOr(C.SCIPaddSolFree(s.raw, &raw, &feasible), feasible)
 		} else {
 			// Not added: we own the solution, so free it to avoid a leak.
 			raw := sol.raw
@@ -847,10 +859,15 @@ func (s *Scip) addSol(sol *Solution) (bool, error) {
 	// SCIPtrySolFree takes ownership and frees the solution whether or not it
 	// is stored.
 	raw := sol.raw
-	if err := retcodeError(C.SCIPtrySolFree(s.raw, &raw, 0, 1, 1, 1, 1, &feasible)); err != nil {
+	sol.raw = nil
+	return feasibleOr(C.SCIPtrySolFree(s.raw, &raw, 0, 1, 1, 1, 1, &feasible), feasible)
+}
+
+// feasibleOr turns a retcode plus SCIP's stored flag into addSol's result.
+func feasibleOr(rc C.SCIP_RETCODE, feasible C.uint) (bool, error) {
+	if err := retcodeError(rc); err != nil {
 		return false, err
 	}
-	sol.raw = nil
 	return feasible != 0, nil
 }
 
