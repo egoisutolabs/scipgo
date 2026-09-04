@@ -101,7 +101,7 @@ func (n Node) TryChildren() ([]Node, error) {
 	}
 	children := make([]Node, 0, numChildren)
 	for i := 0; i < numChildren; i++ {
-		children = append(children, Node{raw: cNodeAt(childNodesPtr, i), scip: n.scip})
+		children = append(children, n.scip.newNode(cNodeAt(childNodesPtr, i)))
 	}
 	return children, nil
 }

@@ -156,7 +156,7 @@ func (c Col) Rows() []Row {
 	rowsPtr := C.SCIPcolGetRows(c.raw)
 	rows := make([]Row, 0, n)
 	for i := 0; i < n; i++ {
-		rows = append(rows, Row{raw: cAt(rowsPtr, i), scip: c.scip})
+		rows = append(rows, c.scip.newRow(cAt(rowsPtr, i)))
 	}
 	return rows
 }

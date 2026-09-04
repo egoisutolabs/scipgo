@@ -39,7 +39,7 @@ func (r Row) Cols() []Col {
 	colsPtr := C.SCIProwGetCols(r.raw)
 	cols := make([]Col, 0, n)
 	for i := 0; i < n; i++ {
-		cols = append(cols, Col{raw: cColAt(colsPtr, i), scip: r.scip})
+		cols = append(cols, r.scip.newCol(cColAt(colsPtr, i)))
 	}
 	return cols
 }
