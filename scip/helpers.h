@@ -43,6 +43,10 @@ SCIP_RETCODE scipgo_includeConshdlr(SCIP* scip, const char* name, const char* de
     int hassepa, int sepafreq, int sepapriority, int delaysepa,
     int hasprop, int propfreq, int delayprop, unsigned int proptiming, uintptr_t data);
 
+/* Installs a delorig hook on the current original problem so Go learns when
+   SCIP frees it (CreateProb, ReadProb, SCIPfree); PROBLEM stage only. */
+SCIP_RETCODE scipgo_watchProblem(SCIP* scip);
+
 /* Copies every plugin of source into target (all SCIPcopyPlugins flags on). */
 SCIP_RETCODE scipgo_copyPlugins(SCIP* source, SCIP* target, SCIP_Bool* valid);
 

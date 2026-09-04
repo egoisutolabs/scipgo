@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "runtime"
+
 // BranchRule is the interface for defining custom branching rules.
 type BranchRule interface {
 	// Execute runs the branching rule on the given candidates and returns the result.
@@ -74,22 +76,45 @@ type BranchRulePlugin struct {
 	scip *Scip // keeps the owning instance alive and identifies it
 }
 
+// live panics with *Error unless the wrapper is usable; see handleErr.
+func (h BranchRulePlugin) live(op string) {
+	mustLive(op, "BranchRulePlugin", h.raw != nil, h.scip, genNone, true)
+}
+
 // Inner returns the internal raw pointer of the branch rule.
 func (b BranchRulePlugin) Inner() *C.SCIP_BRANCHRULE { return b.raw }
 
 // Name returns the name of the branch rule.
-func (b BranchRulePlugin) Name() string { return goString(C.SCIPbranchruleGetName(b.raw)) }
+func (b BranchRulePlugin) Name() string {
+	defer runtime.KeepAlive(b.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	b.live("BranchRulePlugin.Name")
+	return goString(C.SCIPbranchruleGetName(b.raw))
+}
 
 // Desc returns the description of the branch rule.
-func (b BranchRulePlugin) Desc() string { return goString(C.SCIPbranchruleGetDesc(b.raw)) }
+func (b BranchRulePlugin) Desc() string {
+	defer runtime.KeepAlive(b.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	b.live("BranchRulePlugin.Desc")
+	return goString(C.SCIPbranchruleGetDesc(b.raw))
+}
 
 // Priority returns the priority of the branch rule.
-func (b BranchRulePlugin) Priority() int32 { return int32(C.SCIPbranchruleGetPriority(b.raw)) }
+func (b BranchRulePlugin) Priority() int32 {
+	defer runtime.KeepAlive(b.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	b.live("BranchRulePlugin.Priority")
+	return int32(C.SCIPbranchruleGetPriority(b.raw))
+}
 
 // MaxDepth returns the maxdepth of the branch rule.
-func (b BranchRulePlugin) MaxDepth() int32 { return int32(C.SCIPbranchruleGetMaxdepth(b.raw)) }
+func (b BranchRulePlugin) MaxDepth() int32 {
+	defer runtime.KeepAlive(b.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	b.live("BranchRulePlugin.MaxDepth")
+	return int32(C.SCIPbranchruleGetMaxdepth(b.raw))
+}
 
 // MaxBoundDist returns the maxbounddist of the branch rule.
 func (b BranchRulePlugin) MaxBoundDist() float64 {
+	defer runtime.KeepAlive(b.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	b.live("BranchRulePlugin.MaxBoundDist")
 	return float64(C.SCIPbranchruleGetMaxbounddist(b.raw))
 }

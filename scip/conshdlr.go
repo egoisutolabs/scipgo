@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "runtime"
+
 // Conshdlr is the interface for implementing custom constraint handlers. A
 // handler may additionally implement ConshdlrEnfoPS, ConshdlrSepa,
 // ConshdlrProp and Copyable.
@@ -111,17 +113,32 @@ type ConshdlrPlugin struct {
 	scip *Scip // keeps the owning instance alive and identifies it
 }
 
+// live panics with *Error unless the wrapper is usable; see handleErr.
+func (h ConshdlrPlugin) live(op string) {
+	mustLive(op, "ConshdlrPlugin", h.raw != nil, h.scip, genNone, true)
+}
+
 // Inner returns a raw pointer to the underlying SCIP_CONSHDLR.
 func (c ConshdlrPlugin) Inner() *C.SCIP_CONSHDLR { return c.raw }
 
 // Name returns the name of the constraint handler.
-func (c ConshdlrPlugin) Name() string { return goString(C.SCIPconshdlrGetName(c.raw)) }
+func (c ConshdlrPlugin) Name() string {
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	c.live("ConshdlrPlugin.Name")
+	return goString(C.SCIPconshdlrGetName(c.raw))
+}
 
 // Desc returns the description of the constraint handler.
-func (c ConshdlrPlugin) Desc() string { return goString(C.SCIPconshdlrGetDesc(c.raw)) }
+func (c ConshdlrPlugin) Desc() string {
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	c.live("ConshdlrPlugin.Desc")
+	return goString(C.SCIPconshdlrGetDesc(c.raw))
+}
 
 // CreateEmptyRow creates an empty row for the constraint handler.
 func (c ConshdlrPlugin) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	c.live("ConshdlrPlugin.CreateEmptyRow")
 	return NewRow().Name(name).Bounds(lhs, rhs).Local(local).Modifiable(modifiable).Removable(removable).
 		Source(SourceConshdlr(c)).TryAddTo(model)
 }

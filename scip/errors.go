@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 )
 
 // Stage is a SCIP solving stage, as reported by Model.Stage and carried by
@@ -45,14 +46,18 @@ func (s Stage) String() string {
 
 // stage reads the instance's current stage; a freed instance reports StageFree.
 func (s *Scip) stage() Stage {
-	if s == nil || s.raw == nil {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if !s.alive() {
 		return StageFree
 	}
 	return Stage(int(C.SCIPgetStage(s.raw))) // SCIP_STAGE_* is a dense enum from 0
 }
 
 // Stage returns the current SCIP stage of the model.
-func (m Model) Stage() Stage { return m.scip.stage() }
+func (m Model) Stage() Stage {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	return m.scip.stage()
+}
 
 // Error is returned by every Try* method when SCIP reports a failure, and is
 // the value the corresponding panicking method panics with.
@@ -95,7 +100,7 @@ func (p *CallbackPanic) Error() string {
 
 // guard rejects calls on a freed or zero Model before they reach C.
 func (m Model) guard(op string) error {
-	if m.scip == nil || m.scip.raw == nil {
+	if !m.scip.alive() {
 		return &Error{Op: op, Stage: StageFree, Retcode: RetcodeInvalidCall, Detail: "model is freed or zero"}
 	}
 	return nil
@@ -133,57 +138,86 @@ func joinDetail(a, b string) string {
 	return a + ": " + b
 }
 
-// requireStage rejects a call outside the stages SCIP permits for it. It
-// exists for SCIP getters that abort the process on a wrong stage instead of
-// returning a retcode.
-func (m Model) requireStage(op string, allowed ...Stage) error {
-	st := m.scip.stage()
-	for _, a := range allowed {
-		if st == a {
-			return nil
-		}
-	}
-	return &Error{Op: op, Stage: st, Retcode: RetcodeInvalidCall, Detail: "not permitted in this stage"}
-}
+// handleErr is the one liveness rule for every handle and plugin wrapper,
+// shared by the panicking methods (via mustLive) and the Try forms (via
+// checkHandle) so both report the same Retcode:
+//   - the zero value a failed lookup returns          -> InvalidData
+//   - its model has been freed                        -> InvalidCall
+//   - its problem was released: FreeTransform for
+//     transformed objects, CreateProb/ReadProb for all -> InvalidCall
+//   - it belongs to a different model than m           -> InvalidData
+//
+// Liveness is judged by instance identity (Scip.root), so handles minted
+// inside callbacks with a weak wrapper die with their owner. Ownership is
+// judged by raw instance: a top-level callback handle shares its owner's
+// pointer and is accepted, while a handle from a sub-SCIP copy (a Copyable
+// plugin running in an LNS heuristic or a concurrent worker) has the same
+// root but a different instance and must not be passed to the parent.
+// genNone marks a wrapper that is bound to the instance, not to a problem
+// (the plugin wrappers): it survives CreateProb and FreeTransform.
+const genNone = ^uint64(0)
 
-// checkHandle rejects a handle SCIP must not see: the zero value a failed
-// lookup returns, one whose model has been freed, or one that belongs to a
-// different model (its raw pointer would be passed into the wrong instance).
-// Handles created inside callbacks carry a weak *Scip, so ownership is
-// compared by raw instance, not by wrapper identity.
-func (m Model) checkHandle(op, what string, raw bool, owner *Scip) error {
+func handleErr(op, what string, raw bool, owner *Scip, gen uint64, orig bool, m *Scip) *Error {
+	if !raw {
+		stageOf := owner
+		if m != nil {
+			stageOf = m // an argument error is about the call on m
+		}
+		return &Error{Op: op, Stage: stageOf.stage(), Retcode: RetcodeInvalidData, Detail: "zero " + what}
+	}
+	// Resolve the handle's owner once and hold it for the whole check: a
+	// foreign handle's owner is not pinned by the receiving method, so a
+	// second resolution could find it collected in between.
+	r, ok := owner.rootAlive()
+	defer runtime.KeepAlive(r)
 	switch {
-	case !raw:
-		return m.invalid(op, RetcodeInvalidData, "zero "+what)
-	case owner == nil || owner.raw == nil:
-		return m.invalid(op, RetcodeInvalidData, what+" belongs to a freed model")
-	case owner.raw != m.scip.raw:
-		return m.invalid(op, RetcodeInvalidData, what+" belongs to another model")
+	case !ok:
+		return &Error{Op: op, Stage: StageFree, Retcode: RetcodeInvalidCall, Detail: what + " belongs to a freed model"}
+	case gen != genNone && gen != genOf(r, orig):
+		return &Error{Op: op, Stage: Stage(int(C.SCIPgetStage(r.raw))), Retcode: RetcodeInvalidCall, Detail: what + " belongs to a problem that was freed"}
+	case m != nil && owner.raw != m.raw:
+		return &Error{Op: op, Stage: m.stage(), Retcode: RetcodeInvalidData, Detail: what + " belongs to another model"}
 	}
 	return nil
 }
 
-// checkVars validates every Variable; see checkHandle.
+// mustLive panics with the handleErr of a handle, if any. It is the first
+// statement of every handle method.
+func mustLive(op, what string, raw bool, owner *Scip, gen uint64, orig bool) {
+	if e := handleErr(op, what, raw, owner, gen, orig, nil); e != nil {
+		panic(e)
+	}
+}
+
+// checkHandle returns the handleErr of a handle passed to a method of m.
+func (m Model) checkHandle(op, what string, raw bool, owner *Scip, gen uint64, orig bool) error {
+	if e := handleErr(op, what, raw, owner, gen, orig, m.scip); e != nil {
+		return e
+	}
+	return nil
+}
+
+// checkVars validates every Variable; see handleErr.
 func (m Model) checkVars(op string, vars ...Variable) error {
 	for _, v := range vars {
-		if err := m.checkHandle(op, "Variable", v.raw != nil, v.scip); err != nil {
+		if err := m.checkHandle(op, "Variable", v.raw != nil, v.scip, v.gen, v.orig); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// checkCons validates a Constraint; see checkHandle.
+// checkCons validates a Constraint; see handleErr.
 func (m Model) checkCons(op string, c Constraint) error {
-	return m.checkHandle(op, "Constraint", c.raw != nil, c.scip)
+	return m.checkHandle(op, "Constraint", c.raw != nil, c.scip, c.gen, c.orig)
 }
 
-// checkNode validates a *Node; see checkHandle.
+// checkNode validates a *Node; see handleErr.
 func (m Model) checkNode(op string, n *Node) error {
 	if n == nil {
 		return m.invalid(op, RetcodeInvalidData, "nil Node")
 	}
-	return m.checkHandle(op, "Node", n.raw != nil, n.scip)
+	return m.checkHandle(op, "Node", n.raw != nil, n.scip, n.gen, false)
 }
 
 // isNilPlugin reports whether a plugin interface value is nil, including a
@@ -212,4 +246,16 @@ func (m Model) invalid(op string, rc Retcode, detail string) error {
 // call wraps a raw SCIP retcode from a direct C call.
 func (m Model) call(op string, rc C.SCIP_RETCODE) error {
 	return m.wrap(op, retcodeError(rc), "")
+}
+
+// lpSolved reports whether the current node's LP exists and is solved to
+// optimality, the one condition under which LP-derived values such as
+// reduced costs are defined. SCIPhasCurrentNodeLP alone is not enough: the
+// LP can exist while its solution is stale or invalid (after a bound,
+// objective or row change and before the next solve).
+func (s *Scip) lpSolved() bool {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	return stagesSolving.has(s.stage()) &&
+		C.SCIPhasCurrentNodeLP(s.raw) != 0 &&
+		C.SCIPgetLPSolstat(s.raw) == C.SCIP_LPSOLSTAT_OPTIMAL
 }

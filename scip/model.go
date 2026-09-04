@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "runtime"
+
 import "fmt"
 
 // Infinity is SCIP's notion of positive infinity.
@@ -80,6 +82,7 @@ func MinimalModel() Model {
 
 // TryIncludeDefaultPlugins includes all of SCIP's default plugins.
 func (m Model) TryIncludeDefaultPlugins() (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("IncludeDefaultPlugins"); err != nil {
 		return m, err
 	}
@@ -96,6 +99,7 @@ func (m Model) IncludeDefaultPlugins() Model {
 
 // TryCreateProb creates a new problem with the given name.
 func (m Model) TryCreateProb(name string) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("CreateProb"); err != nil {
 		return m, err
 	}
@@ -114,6 +118,7 @@ func (m Model) CreateProb(name string) Model {
 // problem stage with a partially read problem if SCIP failed after creating
 // it, so call FreeTransform/CreateProb before reusing it.
 func (m Model) ReadProb(filename string) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("ReadProb"); err != nil {
 		return Model{}, err
 	}
@@ -125,6 +130,7 @@ func (m Model) ReadProb(filename string) (Model, error) {
 
 // TrySetObjSense sets the objective sense.
 func (m Model) TrySetObjSense(sense ObjSense) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetObjSense"); err != nil {
 		return m, err
 	}
@@ -143,6 +149,7 @@ func (m Model) SetObjSense(sense ObjSense) Model {
 
 // TryMaximize sets the objective sense to maximize.
 func (m Model) TryMaximize() (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("Maximize"); err != nil {
 		return m, err
 	}
@@ -151,6 +158,7 @@ func (m Model) TryMaximize() (Model, error) {
 
 // TryMinimize sets the objective sense to minimize.
 func (m Model) TryMinimize() (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("Minimize"); err != nil {
 		return m, err
 	}
@@ -173,6 +181,7 @@ func (m Model) Minimize() Model {
 
 // TrySetObjIntegral informs SCIP that the objective value is always integral.
 func (m Model) TrySetObjIntegral() (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetObjIntegral"); err != nil {
 		return m, err
 	}
@@ -191,6 +200,7 @@ func (m Model) SetObjIntegral() Model {
 // a *CallbackPanic; a SCIP failure as an *Error. The model stays usable in
 // either case.
 func (m Model) TrySolve() (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("Solve"); err != nil {
 		return m, err
 	}
@@ -214,6 +224,7 @@ func (m Model) Solve() Model {
 // number of threads can be controlled with the parallel/maxnthreads
 // parameter. Errors are reported as for TrySolve.
 func (m Model) TrySolveConcurrent() (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SolveConcurrent"); err != nil {
 		return m, err
 	}
@@ -240,6 +251,7 @@ func (m Model) SolveConcurrent() Model {
 // Every handle sharing the instance is invalid afterwards. Freeing twice is a
 // no-op.
 func (m Model) TryFree() error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if m.scip == nil {
 		return nil
 	}
@@ -263,6 +275,7 @@ func (m Model) Free() { must(m.TryFree()) }
 // the problem stage where variables and constraints can be added again,
 // useful for iterated solving.
 func (m Model) TryFreeTransform() (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("FreeTransform"); err != nil {
 		return m, err
 	}
@@ -286,6 +299,8 @@ func (m Model) FreeTransform() Model {
 // FindHeur finds a primal heuristic by its name (e.g. "completesol"), giving
 // access to its runtime statistics.
 func (m Model) FindHeur(name string) (HeurPlugin, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("FindHeur"))
 	raw := m.scip.findHeur(name)
 	if raw == nil {
 		return HeurPlugin{}, false
@@ -295,6 +310,8 @@ func (m Model) FindHeur(name string) (HeurPlugin, bool) {
 
 // Heurs returns all primal heuristics included in the model.
 func (m Model) Heurs() []HeurPlugin {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Heurs"))
 	n := int(C.SCIPgetNHeurs(m.scip.raw))
 	arr := C.SCIPgetHeurs(m.scip.raw)
 	out := make([]HeurPlugin, 0, n)
@@ -306,6 +323,8 @@ func (m Model) Heurs() []HeurPlugin {
 
 // Separators returns all separators included in the model.
 func (m Model) Separators() []SeparatorPlugin {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Separators"))
 	n := int(C.SCIPgetNSepas(m.scip.raw))
 	arr := C.SCIPgetSepas(m.scip.raw)
 	out := make([]SeparatorPlugin, 0, n)
@@ -317,6 +336,8 @@ func (m Model) Separators() []SeparatorPlugin {
 
 // FindSeparator finds a separator by name.
 func (m Model) FindSeparator(name string) (SeparatorPlugin, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("FindSeparator"))
 	raw := m.scip.findSepa(name)
 	if raw == nil {
 		return SeparatorPlugin{}, false
@@ -326,6 +347,8 @@ func (m Model) FindSeparator(name string) (SeparatorPlugin, bool) {
 
 // Presolvers returns all presolvers included in the model.
 func (m Model) Presolvers() []PresolverPlugin {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Presolvers"))
 	n := int(C.SCIPgetNPresols(m.scip.raw))
 	arr := C.SCIPgetPresols(m.scip.raw)
 	out := make([]PresolverPlugin, 0, n)
@@ -337,6 +360,8 @@ func (m Model) Presolvers() []PresolverPlugin {
 
 // FindPresolver finds a presolver by name.
 func (m Model) FindPresolver(name string) (PresolverPlugin, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("FindPresolver"))
 	raw := m.scip.findPresol(name)
 	if raw == nil {
 		return PresolverPlugin{}, false
@@ -347,6 +372,8 @@ func (m Model) FindPresolver(name string) (PresolverPlugin, bool) {
 // FindNodesel finds an included node selector by its name (e.g. "bfs"),
 // giving access to its priorities and statistics.
 func (m Model) FindNodesel(name string) (NodeselPlugin, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("FindNodesel"))
 	raw := m.scip.findNodesel(name)
 	if raw == nil {
 		return NodeselPlugin{}, false
@@ -356,10 +383,11 @@ func (m Model) FindNodesel(name string) (NodeselPlugin, bool) {
 
 // TrySetHeurPriority sets the priority of a primal heuristic.
 func (m Model) TrySetHeurPriority(h HeurPlugin, priority int32) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetHeurPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetHeurPriority", "HeurPlugin", h.raw != nil, h.scip); err != nil {
+	if err := m.checkHandle("SetHeurPriority", "HeurPlugin", h.raw != nil, h.scip, genNone, true); err != nil {
 		return err
 	}
 	return m.call("SetHeurPriority", C.SCIPsetHeurPriority(m.scip.raw, h.raw, C.int(priority)))
@@ -370,10 +398,11 @@ func (m Model) SetHeurPriority(h HeurPlugin, priority int32) { must(m.TrySetHeur
 
 // TrySetSepaPriority sets the priority of a separator.
 func (m Model) TrySetSepaPriority(s SeparatorPlugin, priority int32) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetSepaPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetSepaPriority", "SeparatorPlugin", s.raw != nil, s.scip); err != nil {
+	if err := m.checkHandle("SetSepaPriority", "SeparatorPlugin", s.raw != nil, s.scip, genNone, true); err != nil {
 		return err
 	}
 	return m.call("SetSepaPriority", C.SCIPsetSepaPriority(m.scip.raw, s.raw, C.int(priority)))
@@ -386,10 +415,11 @@ func (m Model) SetSepaPriority(s SeparatorPlugin, priority int32) {
 
 // TrySetPresolPriority sets the priority of a presolver.
 func (m Model) TrySetPresolPriority(p PresolverPlugin, priority int32) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetPresolPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetPresolPriority", "PresolverPlugin", p.raw != nil, p.scip); err != nil {
+	if err := m.checkHandle("SetPresolPriority", "PresolverPlugin", p.raw != nil, p.scip, genNone, true); err != nil {
 		return err
 	}
 	return m.call("SetPresolPriority", C.SCIPsetPresolPriority(m.scip.raw, p.raw, C.int(priority)))
@@ -402,6 +432,7 @@ func (m Model) SetPresolPriority(p PresolverPlugin, priority int32) {
 
 // TryIncludeBranchRule includes a new branch rule in the model.
 func (m Model) TryIncludeBranchRule(name, desc string, priority, maxdepth int32, maxbounddist float64, rule BranchRule) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("IncludeBranchRule"); err != nil {
 		return err
 	}
@@ -419,6 +450,7 @@ func (m Model) IncludeBranchRule(name, desc string, priority, maxdepth int32, ma
 
 // TryIncludeNodesel includes a new node selector in the model.
 func (m Model) TryIncludeNodesel(name, desc string, stdPriority, memSavePriority int32, nodesel NodeSel) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("IncludeNodesel"); err != nil {
 		return err
 	}
@@ -435,6 +467,7 @@ func (m Model) IncludeNodesel(name, desc string, stdPriority, memSavePriority in
 
 // TryIncludeHeur includes a new primal heuristic in the model.
 func (m Model) TryIncludeHeur(name, desc string, priority int32, dispchar byte, freq, freqofs, maxdepth int32, timing HeurTiming, usessubscip bool, heur Heuristic) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("IncludeHeur"); err != nil {
 		return err
 	}
@@ -451,6 +484,7 @@ func (m Model) IncludeHeur(name, desc string, priority int32, dispchar byte, fre
 
 // TryIncludeSeparator includes a new separator in the model.
 func (m Model) TryIncludeSeparator(name, desc string, priority, freq int32, maxbounddist float64, usesubscip, delay bool, sep Separator) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("IncludeSeparator"); err != nil {
 		return err
 	}
@@ -467,6 +501,7 @@ func (m Model) IncludeSeparator(name, desc string, priority, freq int32, maxboun
 
 // TryIncludeEventhdlr includes a new event handler in the model.
 func (m Model) TryIncludeEventhdlr(name, desc string, eventhdlr Eventhdlr) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("IncludeEventhdlr"); err != nil {
 		return err
 	}
@@ -483,6 +518,7 @@ func (m Model) IncludeEventhdlr(name, desc string, eventhdlr Eventhdlr) {
 
 // TryIncludePricer includes a new pricer in the model and activates it.
 func (m Model) TryIncludePricer(name, desc string, priority int32, delay bool, pricer Pricer) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("IncludePricer"); err != nil {
 		return err
 	}
@@ -503,6 +539,7 @@ func (m Model) IncludePricer(name, desc string, priority int32, delay bool, pric
 // ConshdlrSepa and ConshdlrProp; those callbacks are registered only when
 // present.
 func (m Model) TryIncludeConshdlr(name, desc string, enfopriority, checkpriority int32, conshdlr Conshdlr) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("IncludeConshdlr"); err != nil {
 		return err
 	}
@@ -564,16 +601,35 @@ func (m Model) Inner() *C.SCIP { return m.scip.raw }
 // ScipPtr is an alias for Inner.
 func (m Model) ScipPtr() *C.SCIP { return m.Inner() }
 
-// Status returns the status of the optimization model.
-func (m Model) Status() Status { return m.scip.status() }
+// TryStatus returns the status of the optimization model.
+func (m Model) TryStatus() (Status, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.guard("Status"); err != nil {
+		return StatusUnknown, err
+	}
+	return m.scip.status(), nil
+}
+
+// Status returns the status of the optimization model. It panics with *Error
+// on a freed model.
+func (m Model) Status() Status {
+	s, err := m.TryStatus()
+	must(err)
+	return s
+}
 
 // PrintVersion prints the version of SCIP used by the optimization model.
-func (m Model) PrintVersion() { m.scip.printVersion() }
+func (m Model) PrintVersion() {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("PrintVersion"))
+	m.scip.printVersion()
+}
 
 // ------------------------------------------------------------- parameters
 
 // TrySetDisplayVerbosity sets the display/verblevel parameter.
 func (m Model) TrySetDisplayVerbosity(level int32) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetDisplayVerbosity"); err != nil {
 		return m, err
 	}
@@ -597,6 +653,7 @@ func (m Model) HideOutput() Model { return m.SetDisplayVerbosity(0) }
 
 // TrySetTimeLimit sets the time limit for the optimization model, in seconds.
 func (m Model) TrySetTimeLimit(timeLimit float64) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetTimeLimit"); err != nil {
 		return m, err
 	}
@@ -612,6 +669,7 @@ func (m Model) SetTimeLimit(timeLimit float64) Model {
 
 // TrySetMemoryLimit sets the memory limit for the optimization model, in MB.
 func (m Model) TrySetMemoryLimit(memoryLimit float64) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetMemoryLimit"); err != nil {
 		return m, err
 	}
@@ -627,6 +685,7 @@ func (m Model) SetMemoryLimit(memoryLimit float64) Model {
 
 // SetStrParam sets a SCIP string parameter.
 func (m Model) SetStrParam(param, value string) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetStrParam"); err != nil {
 		return m, err
 	}
@@ -635,6 +694,7 @@ func (m Model) SetStrParam(param, value string) (Model, error) {
 
 // SetBoolParam sets a SCIP boolean parameter.
 func (m Model) SetBoolParam(param string, value bool) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetBoolParam"); err != nil {
 		return m, err
 	}
@@ -643,6 +703,7 @@ func (m Model) SetBoolParam(param string, value bool) (Model, error) {
 
 // SetIntParam sets a SCIP integer parameter.
 func (m Model) SetIntParam(param string, value int32) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetIntParam"); err != nil {
 		return m, err
 	}
@@ -651,6 +712,7 @@ func (m Model) SetIntParam(param string, value int32) (Model, error) {
 
 // SetLongintParam sets a SCIP long integer parameter.
 func (m Model) SetLongintParam(param string, value int64) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetLongintParam"); err != nil {
 		return m, err
 	}
@@ -659,6 +721,7 @@ func (m Model) SetLongintParam(param string, value int64) (Model, error) {
 
 // SetRealParam sets a SCIP real parameter.
 func (m Model) SetRealParam(param string, value float64) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetRealParam"); err != nil {
 		return m, err
 	}
@@ -667,6 +730,7 @@ func (m Model) SetRealParam(param string, value float64) (Model, error) {
 
 // TryStrParam returns the value of a SCIP string parameter.
 func (m Model) TryStrParam(param string) (string, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("StrParam"); err != nil {
 		return "", err
 	}
@@ -683,6 +747,7 @@ func (m Model) StrParam(param string) string {
 
 // TryBoolParam returns the value of a SCIP boolean parameter.
 func (m Model) TryBoolParam(param string) (bool, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("BoolParam"); err != nil {
 		return false, err
 	}
@@ -699,6 +764,7 @@ func (m Model) BoolParam(param string) bool {
 
 // TryIntParam returns the value of a SCIP integer parameter.
 func (m Model) TryIntParam(param string) (int32, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("IntParam"); err != nil {
 		return 0, err
 	}
@@ -715,6 +781,7 @@ func (m Model) IntParam(param string) int32 {
 
 // TryLongintParam returns the value of a SCIP long integer parameter.
 func (m Model) TryLongintParam(param string) (int64, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("LongintParam"); err != nil {
 		return 0, err
 	}
@@ -732,6 +799,7 @@ func (m Model) LongintParam(param string) int64 {
 
 // TryRealParam returns the value of a SCIP real parameter.
 func (m Model) TryRealParam(param string) (float64, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("RealParam"); err != nil {
 		return 0, err
 	}
@@ -748,6 +816,7 @@ func (m Model) RealParam(param string) float64 {
 
 // TrySetPresolving sets the presolving emphasis.
 func (m Model) TrySetPresolving(presolving ParamSetting) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetPresolving"); err != nil {
 		return m, err
 	}
@@ -766,6 +835,7 @@ func (m Model) SetPresolving(presolving ParamSetting) Model {
 
 // TrySetSeparating sets the separating emphasis.
 func (m Model) TrySetSeparating(separating ParamSetting) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetSeparating"); err != nil {
 		return m, err
 	}
@@ -784,6 +854,7 @@ func (m Model) SetSeparating(separating ParamSetting) Model {
 
 // TrySetHeuristics sets the heuristics emphasis.
 func (m Model) TrySetHeuristics(heuristics ParamSetting) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetHeuristics"); err != nil {
 		return m, err
 	}
@@ -803,19 +874,43 @@ func (m Model) SetHeuristics(heuristics ParamSetting) Model {
 // ------------------------------------------------------------- numerics
 
 // Eq checks equality using tolerance.
-func (m Model) Eq(a, b float64) bool { return C.SCIPisEQ(m.scip.raw, C.double(a), C.double(b)) != 0 }
+func (m Model) Eq(a, b float64) bool {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Eq"))
+	return C.SCIPisEQ(m.scip.raw, C.double(a), C.double(b)) != 0
+}
 
 // Lt checks if a is less than b using tolerance.
-func (m Model) Lt(a, b float64) bool { return C.SCIPisLT(m.scip.raw, C.double(a), C.double(b)) != 0 }
+func (m Model) Lt(a, b float64) bool {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Lt"))
+	return C.SCIPisLT(m.scip.raw, C.double(a), C.double(b)) != 0
+}
 
 // Le checks if a is less than or equal to b using tolerance.
-func (m Model) Le(a, b float64) bool { return C.SCIPisLE(m.scip.raw, C.double(a), C.double(b)) != 0 }
+func (m Model) Le(a, b float64) bool {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Le"))
+	return C.SCIPisLE(m.scip.raw, C.double(a), C.double(b)) != 0
+}
 
 // Gt checks if a is greater than b using tolerance.
-func (m Model) Gt(a, b float64) bool { return C.SCIPisGT(m.scip.raw, C.double(a), C.double(b)) != 0 }
+func (m Model) Gt(a, b float64) bool {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Gt"))
+	return C.SCIPisGT(m.scip.raw, C.double(a), C.double(b)) != 0
+}
 
 // Ge checks if a is greater than or equal to b using tolerance.
-func (m Model) Ge(a, b float64) bool { return C.SCIPisGE(m.scip.raw, C.double(a), C.double(b)) != 0 }
+func (m Model) Ge(a, b float64) bool {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Ge"))
+	return C.SCIPisGE(m.scip.raw, C.double(a), C.double(b)) != 0
+}
 
 // Eps returns SCIP's epsilon value.
-func (m Model) Eps() float64 { return float64(C.SCIPepsilon(m.scip.raw)) }
+func (m Model) Eps() float64 {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Eps"))
+	return float64(C.SCIPepsilon(m.scip.raw))
+}

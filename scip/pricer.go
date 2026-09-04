@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "runtime"
+
 // Pricer is the interface for SCIP variable pricers.
 type Pricer interface {
 	// GenerateColumns generates negative reduced cost columns.
@@ -49,20 +51,45 @@ type PricerPlugin struct {
 	scip *Scip // keeps the owning instance alive and identifies it
 }
 
+// live panics with *Error unless the wrapper is usable; see handleErr.
+func (h PricerPlugin) live(op string) {
+	mustLive(op, "PricerPlugin", h.raw != nil, h.scip, genNone, true)
+}
+
 // Inner returns the internal raw pointer of the pricer.
 func (p PricerPlugin) Inner() *C.SCIP_PRICER { return p.raw }
 
 // Name returns the name of the pricer.
-func (p PricerPlugin) Name() string { return goString(C.SCIPpricerGetName(p.raw)) }
+func (p PricerPlugin) Name() string {
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	p.live("PricerPlugin.Name")
+	return goString(C.SCIPpricerGetName(p.raw))
+}
 
 // Desc returns the description of the pricer.
-func (p PricerPlugin) Desc() string { return goString(C.SCIPpricerGetDesc(p.raw)) }
+func (p PricerPlugin) Desc() string {
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	p.live("PricerPlugin.Desc")
+	return goString(C.SCIPpricerGetDesc(p.raw))
+}
 
 // Priority returns the priority of the pricer.
-func (p PricerPlugin) Priority() int32 { return int32(C.SCIPpricerGetPriority(p.raw)) }
+func (p PricerPlugin) Priority() int32 {
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	p.live("PricerPlugin.Priority")
+	return int32(C.SCIPpricerGetPriority(p.raw))
+}
 
 // IsDelayed returns the delay setting of the pricer.
-func (p PricerPlugin) IsDelayed() bool { return C.SCIPpricerIsDelayed(p.raw) != 0 }
+func (p PricerPlugin) IsDelayed() bool {
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	p.live("PricerPlugin.IsDelayed")
+	return C.SCIPpricerIsDelayed(p.raw) != 0
+}
 
 // IsActive returns whether the pricer is active.
-func (p PricerPlugin) IsActive() bool { return C.SCIPpricerIsActive(p.raw) != 0 }
+func (p PricerPlugin) IsActive() bool {
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	p.live("PricerPlugin.IsActive")
+	return C.SCIPpricerIsActive(p.raw) != 0
+}

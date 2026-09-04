@@ -1,6 +1,7 @@
 package scip
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -103,7 +104,7 @@ func (b VarBuilder) TryAddTo(m Model) (Variable, error) {
 	if err := m.guard("AddVar"); err != nil {
 		return Variable{}, err
 	}
-	name, err := builderName(m, "AddVar", b.name, func() string { return b.defaultName(m.NVars()) })
+	name, err := builderName(m, "AddVar", b.name, m.TryNVars, b.defaultName)
 	if err != nil {
 		return Variable{}, err
 	}
@@ -111,16 +112,21 @@ func (b VarBuilder) TryAddTo(m Model) (Variable, error) {
 }
 
 // builderName returns the explicit name, or the default built from a count
-// getter, which SCIP only permits once a problem exists (it aborts the
-// process otherwise), so the stage is checked first.
-func builderName(m Model, op string, explicit *string, def func() string) (string, error) {
+// getter through its Try form, so a stage where SCIP forbids the count is an
+// error rather than an abort.
+func builderName(m Model, op string, explicit *string, count func() (int, error), def func(int) string) (string, error) {
 	if explicit != nil {
 		return *explicit, nil
 	}
-	if st := m.Stage(); st < StageProblem || st == StageTransforming || st > StageExitSolve {
-		return "", m.invalid(op, RetcodeInvalidCall, "no problem exists to name the object after")
+	n, err := count()
+	if err != nil {
+		var e *Error
+		if errors.As(err, &e) {
+			e.Op = op
+		}
+		return "", err
 	}
-	return def(), nil
+	return def(n), nil
 }
 
 // AddToSolving adds the variable to a model in the Solving stage.
@@ -254,7 +260,7 @@ func (b ConsBuilder) TryAddTo(m Model) (Constraint, error) {
 	if err := m.guard("AddCons"); err != nil {
 		return Constraint{}, err
 	}
-	name, err := builderName(m, "AddCons", b.name, func() string { return b.defaultName(m.NConss()) })
+	name, err := builderName(m, "AddCons", b.name, m.TryNConss, b.defaultName)
 	if err != nil {
 		return Constraint{}, err
 	}
@@ -428,9 +434,9 @@ func (b RowBuilder) TryAddTo(m Model) (Row, error) {
 		var err error
 		switch {
 		case src.separator != nil:
-			err = m.checkHandle("AddRow", "SeparatorPlugin", src.separator.raw != nil, src.separator.scip)
+			err = m.checkHandle("AddRow", "SeparatorPlugin", src.separator.raw != nil, src.separator.scip, genNone, true)
 		case src.constraintHandler != nil:
-			err = m.checkHandle("AddRow", "ConshdlrPlugin", src.constraintHandler.raw != nil, src.constraintHandler.scip)
+			err = m.checkHandle("AddRow", "ConshdlrPlugin", src.constraintHandler.raw != nil, src.constraintHandler.scip, genNone, true)
 		case src.constraint != nil:
 			err = m.checkCons("AddRow", *src.constraint)
 		}
@@ -442,7 +448,7 @@ func (b RowBuilder) TryAddTo(m Model) (Row, error) {
 	if err != nil {
 		return Row{}, m.wrap("AddRow", err, strOrEmpty(b.name))
 	}
-	return Row{raw: rowPtr, scip: m.scip}, nil
+	return m.scip.newRow(rowPtr), nil
 }
 
 // AddToSolving adds the row to a model in the Solving stage.

@@ -5,6 +5,8 @@ package scip
 */
 import "C"
 
+import "runtime"
+
 // Separator is the interface for defining custom separation routines.
 type Separator interface {
 	// ExecuteLP executes the separation routine on LP solutions.
@@ -55,32 +57,67 @@ type SeparatorPlugin struct {
 	scip *Scip // keeps the owning instance alive and identifies it
 }
 
+// live panics with *Error unless the wrapper is usable; see handleErr.
+func (h SeparatorPlugin) live(op string) {
+	mustLive(op, "SeparatorPlugin", h.raw != nil, h.scip, genNone, true)
+}
+
 // Inner returns the internal raw pointer of the separator.
 func (s SeparatorPlugin) Inner() *C.SCIP_SEPA { return s.raw }
 
 // Name returns the name of the separator.
-func (s SeparatorPlugin) Name() string { return goString(C.SCIPsepaGetName(s.raw)) }
+func (s SeparatorPlugin) Name() string {
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	s.live("SeparatorPlugin.Name")
+	return goString(C.SCIPsepaGetName(s.raw))
+}
 
 // Desc returns the description of the separator.
-func (s SeparatorPlugin) Desc() string { return goString(C.SCIPsepaGetDesc(s.raw)) }
+func (s SeparatorPlugin) Desc() string {
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	s.live("SeparatorPlugin.Desc")
+	return goString(C.SCIPsepaGetDesc(s.raw))
+}
 
 // Priority returns the priority of the separator.
-func (s SeparatorPlugin) Priority() int32 { return int32(C.SCIPsepaGetPriority(s.raw)) }
+func (s SeparatorPlugin) Priority() int32 {
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	s.live("SeparatorPlugin.Priority")
+	return int32(C.SCIPsepaGetPriority(s.raw))
+}
 
 // Freq returns the frequency of the separator.
-func (s SeparatorPlugin) Freq() int32 { return int32(C.SCIPsepaGetFreq(s.raw)) }
+func (s SeparatorPlugin) Freq() int32 {
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	s.live("SeparatorPlugin.Freq")
+	return int32(C.SCIPsepaGetFreq(s.raw))
+}
 
 // SetFreq sets the frequency of the separator.
-func (s SeparatorPlugin) SetFreq(freq int32) { C.SCIPsepaSetFreq(s.raw, C.int(freq)) }
+func (s SeparatorPlugin) SetFreq(freq int32) {
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	s.live("SeparatorPlugin.SetFreq")
+	C.SCIPsepaSetFreq(s.raw, C.int(freq))
+}
 
 // MaxBoundDist returns the maxbounddist of the separator.
-func (s SeparatorPlugin) MaxBoundDist() float64 { return float64(C.SCIPsepaGetMaxbounddist(s.raw)) }
+func (s SeparatorPlugin) MaxBoundDist() float64 {
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	s.live("SeparatorPlugin.MaxBoundDist")
+	return float64(C.SCIPsepaGetMaxbounddist(s.raw))
+}
 
 // IsDelayed returns whether the separator is delayed.
-func (s SeparatorPlugin) IsDelayed() bool { return C.SCIPsepaIsDelayed(s.raw) != 0 }
+func (s SeparatorPlugin) IsDelayed() bool {
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	s.live("SeparatorPlugin.IsDelayed")
+	return C.SCIPsepaIsDelayed(s.raw) != 0
+}
 
 // CreateEmptyRow creates an empty LP row.
 func (s SeparatorPlugin) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	s.live("SeparatorPlugin.CreateEmptyRow")
 	return NewRow().Name(name).Bounds(lhs, rhs).Local(local).Modifiable(modifiable).Removable(removable).
 		Source(SourceSepa(s)).TryAddTo(model)
 }
