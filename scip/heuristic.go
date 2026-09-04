@@ -9,8 +9,8 @@ import "C"
 // runtime statistics (how often it ran and how many solutions it found).
 // Obtain one via Model.FindHeur.
 type HeurPlugin struct {
-	raw   *C.SCIP_HEUR
-	owner *C.SCIP // instance the plugin is included in
+	raw  *C.SCIP_HEUR
+	scip *Scip // keeps the owning instance alive and identifies it
 }
 
 // Inner returns a pointer to the underlying SCIP_HEUR.

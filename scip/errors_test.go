@@ -2,6 +2,7 @@ package scip
 
 import (
 	"errors"
+	"runtime"
 	"sync/atomic"
 	"testing"
 )
@@ -437,5 +438,55 @@ func TestRoundFiveValidation(t *testing.T) {
 	a.Free()
 	if _, err := b.TryAddConsNonlinear(xa.Expr(), 0, 1, "g"); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("dangling var in expr: %v", err)
+	}
+}
+
+func TestPluginWrappersCheckOwnershipEverywhere(t *testing.T) {
+	a := NewModel().HideOutput().IncludeDefaultPlugins().CreateProb("a")
+	b := NewModel().HideOutput().IncludeDefaultPlugins().CreateProb("b")
+	defer a.Free()
+	defer b.Free()
+	sepA, _ := a.FindSeparator("gomory")
+	if _, err := NewRow().Source(SourceSepa(sepA)).TryAddTo(b); asError(t, err).Detail != "SeparatorPlugin belongs to another model" {
+		t.Fatalf("row source: %v", err)
+	}
+	if _, err := sepA.CreateEmptyRow(b, "r", 0, 1, true, false, true); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("CreateEmptyRow foreign: %v", err)
+	}
+	if err := b.TrySetSepaPriority(sepA, 1); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("priority foreign: %v", err)
+	}
+	pA, _ := a.FindPresolver("trivial")
+	if err := b.TrySetPresolPriority(pA, 1); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("presol foreign: %v", err)
+	}
+}
+
+func TestPluginWrappersKeepModelAlive(t *testing.T) {
+	h := func() HeurPlugin {
+		m := NewModel().HideOutput().IncludeDefaultPlugins()
+		h, _ := m.FindHeur("rounding")
+		return h // m goes out of scope; only h keeps the instance reachable
+	}()
+	for i := 0; i < 3; i++ {
+		runtime.GC()
+	}
+	if h.Name() != "rounding" || h.scip == nil || h.scip.raw == nil {
+		t.Fatal("heuristic handle outlived its instance")
+	}
+}
+
+func TestDanglingVariableNeverDereferenced(t *testing.T) {
+	a := createTestModel(t)
+	x := a.Vars()[0]
+	a.Free()
+	if got := x.Expr().Pow(2).String(); got != "<Variable of a freed model>^2" {
+		t.Fatalf("String on dangling var: %q", got)
+	}
+	b := createTestModel(t)
+	defer b.Free()
+	_, err := b.TryAddConsNonlinear(x.Expr(), 0, 1, "d")
+	if e := asError(t, err); !errors.Is(err, RetcodeInvalidData) || e.Detail == "" {
+		t.Fatalf("dangling var in expr: %+v", e)
 	}
 }

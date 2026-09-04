@@ -29,6 +29,18 @@ func (v Variable) Index() VarId {
 // Name returns the name of the variable.
 func (v Variable) Name() string { return goString(C.SCIPvarGetName(v.raw)) }
 
+// safeName is Name for error messages: it never dereferences a zero or
+// dangling handle.
+func (v Variable) safeName() string {
+	switch {
+	case v.raw == nil:
+		return "<zero Variable>"
+	case v.scip == nil || v.scip.raw == nil:
+		return "<Variable of a freed model>"
+	}
+	return v.Name()
+}
+
 // Obj returns the objective coefficient of the variable.
 func (v Variable) Obj() float64 { return float64(C.SCIPvarGetObj(v.raw)) }
 

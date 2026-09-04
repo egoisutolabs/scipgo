@@ -155,10 +155,7 @@ func (e Expr) String() string {
 	f := func(x float64) string { return strconv.FormatFloat(x, 'g', -1, 64) }
 	switch n.kind {
 	case exprVar:
-		if n.v.raw == nil {
-			return "<zero Variable>"
-		}
-		return n.v.Name()
+		return n.v.safeName()
 	case exprConst:
 		return f(n.c)
 	case exprSum:
@@ -223,7 +220,7 @@ func (e Expr) build(s *Scip) (*C.SCIP_EXPR, error) {
 		case n.v.raw == nil:
 			return nil, fmt.Errorf("zero Variable in expression")
 		case n.v.scip == nil || n.v.scip.raw == nil:
-			return nil, fmt.Errorf("variable %s belongs to a freed model", n.v.Name())
+			return nil, fmt.Errorf("variable belongs to a freed model")
 		case n.v.scip.raw != s.raw:
 			return nil, fmt.Errorf("variable %s belongs to another model", n.v.Name())
 		}

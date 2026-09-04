@@ -290,7 +290,7 @@ func (m Model) FindHeur(name string) (HeurPlugin, bool) {
 	if raw == nil {
 		return HeurPlugin{}, false
 	}
-	return HeurPlugin{raw: raw, owner: m.scip.raw}, true
+	return HeurPlugin{raw: raw, scip: m.scip}, true
 }
 
 // Heurs returns all primal heuristics included in the model.
@@ -299,7 +299,7 @@ func (m Model) Heurs() []HeurPlugin {
 	arr := C.SCIPgetHeurs(m.scip.raw)
 	out := make([]HeurPlugin, 0, n)
 	for i := 0; i < n; i++ {
-		out = append(out, HeurPlugin{raw: cAt(arr, i), owner: m.scip.raw})
+		out = append(out, HeurPlugin{raw: cAt(arr, i), scip: m.scip})
 	}
 	return out
 }
@@ -310,7 +310,7 @@ func (m Model) Separators() []SeparatorPlugin {
 	arr := C.SCIPgetSepas(m.scip.raw)
 	out := make([]SeparatorPlugin, 0, n)
 	for i := 0; i < n; i++ {
-		out = append(out, SeparatorPlugin{raw: cAt(arr, i), owner: m.scip.raw})
+		out = append(out, SeparatorPlugin{raw: cAt(arr, i), scip: m.scip})
 	}
 	return out
 }
@@ -321,7 +321,7 @@ func (m Model) FindSeparator(name string) (SeparatorPlugin, bool) {
 	if raw == nil {
 		return SeparatorPlugin{}, false
 	}
-	return SeparatorPlugin{raw: raw, owner: m.scip.raw}, true
+	return SeparatorPlugin{raw: raw, scip: m.scip}, true
 }
 
 // Presolvers returns all presolvers included in the model.
@@ -330,7 +330,7 @@ func (m Model) Presolvers() []PresolverPlugin {
 	arr := C.SCIPgetPresols(m.scip.raw)
 	out := make([]PresolverPlugin, 0, n)
 	for i := 0; i < n; i++ {
-		out = append(out, PresolverPlugin{raw: cAt(arr, i), owner: m.scip.raw})
+		out = append(out, PresolverPlugin{raw: cAt(arr, i), scip: m.scip})
 	}
 	return out
 }
@@ -341,7 +341,7 @@ func (m Model) FindPresolver(name string) (PresolverPlugin, bool) {
 	if raw == nil {
 		return PresolverPlugin{}, false
 	}
-	return PresolverPlugin{raw: raw, owner: m.scip.raw}, true
+	return PresolverPlugin{raw: raw, scip: m.scip}, true
 }
 
 // FindNodesel finds an included node selector by its name (e.g. "bfs"),
@@ -351,7 +351,7 @@ func (m Model) FindNodesel(name string) (NodeselPlugin, bool) {
 	if raw == nil {
 		return NodeselPlugin{}, false
 	}
-	return NodeselPlugin{raw: raw}, true
+	return NodeselPlugin{raw: raw, scip: m.scip}, true
 }
 
 // TrySetHeurPriority sets the priority of a primal heuristic.
@@ -359,11 +359,8 @@ func (m Model) TrySetHeurPriority(h HeurPlugin, priority int32) error {
 	if err := m.guard("SetHeurPriority"); err != nil {
 		return err
 	}
-	if h.raw == nil {
-		return m.invalid("SetHeurPriority", RetcodeInvalidData, "zero HeurPlugin")
-	}
-	if h.owner != m.scip.raw {
-		return m.invalid("SetHeurPriority", RetcodeInvalidData, "HeurPlugin belongs to another model")
+	if err := m.checkHandle("SetHeurPriority", "HeurPlugin", h.raw != nil, h.scip); err != nil {
+		return err
 	}
 	return m.call("SetHeurPriority", C.SCIPsetHeurPriority(m.scip.raw, h.raw, C.int(priority)))
 }
@@ -376,11 +373,8 @@ func (m Model) TrySetSepaPriority(s SeparatorPlugin, priority int32) error {
 	if err := m.guard("SetSepaPriority"); err != nil {
 		return err
 	}
-	if s.raw == nil {
-		return m.invalid("SetSepaPriority", RetcodeInvalidData, "zero SeparatorPlugin")
-	}
-	if s.owner != m.scip.raw {
-		return m.invalid("SetSepaPriority", RetcodeInvalidData, "SeparatorPlugin belongs to another model")
+	if err := m.checkHandle("SetSepaPriority", "SeparatorPlugin", s.raw != nil, s.scip); err != nil {
+		return err
 	}
 	return m.call("SetSepaPriority", C.SCIPsetSepaPriority(m.scip.raw, s.raw, C.int(priority)))
 }
@@ -395,11 +389,8 @@ func (m Model) TrySetPresolPriority(p PresolverPlugin, priority int32) error {
 	if err := m.guard("SetPresolPriority"); err != nil {
 		return err
 	}
-	if p.raw == nil {
-		return m.invalid("SetPresolPriority", RetcodeInvalidData, "zero PresolverPlugin")
-	}
-	if p.owner != m.scip.raw {
-		return m.invalid("SetPresolPriority", RetcodeInvalidData, "PresolverPlugin belongs to another model")
+	if err := m.checkHandle("SetPresolPriority", "PresolverPlugin", p.raw != nil, p.scip); err != nil {
+		return err
 	}
 	return m.call("SetPresolPriority", C.SCIPsetPresolPriority(m.scip.raw, p.raw, C.int(priority)))
 }

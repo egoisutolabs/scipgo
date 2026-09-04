@@ -107,7 +107,8 @@ func conshdlrResultToC(r ConshdlrResult) C.SCIP_RESULT {
 
 // ConshdlrPlugin is a wrapper for the internal SCIP constraint handler.
 type ConshdlrPlugin struct {
-	raw *C.SCIP_CONSHDLR
+	raw  *C.SCIP_CONSHDLR
+	scip *Scip // keeps the owning instance alive and identifies it
 }
 
 // Inner returns a raw pointer to the underlying SCIP_CONSHDLR.
@@ -121,12 +122,6 @@ func (c ConshdlrPlugin) Desc() string { return goString(C.SCIPconshdlrGetDesc(c.
 
 // CreateEmptyRow creates an empty row for the constraint handler.
 func (c ConshdlrPlugin) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
-	cn := cString(name)
-	defer freeCString(cn)
-	var row *C.SCIP_ROW
-	if err := retcodeError(C.SCIPcreateEmptyRowConshdlr(model.scip.raw, &row, c.raw, cn,
-		C.double(lhs), C.double(rhs), cBool(local), cBool(modifiable), cBool(removable))); err != nil {
-		return Row{}, err
-	}
-	return Row{raw: row, scip: model.scip}, nil
+	return NewRow().Name(name).Bounds(lhs, rhs).Local(local).Modifiable(modifiable).Removable(removable).
+		Source(SourceConshdlr(c)).TryAddTo(model)
 }

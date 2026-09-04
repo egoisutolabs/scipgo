@@ -24,7 +24,8 @@ type NodeSel interface {
 
 // NodeselPlugin is a wrapper struct for the internal SCIP node selector.
 type NodeselPlugin struct {
-	raw *C.SCIP_NODESEL
+	raw  *C.SCIP_NODESEL
+	scip *Scip // keeps the owning instance alive and identifies it
 }
 
 // Inner returns the internal raw pointer of the node selector.

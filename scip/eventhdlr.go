@@ -87,7 +87,8 @@ func (m EventMask) Matches(mask EventMask) bool { return m&mask != 0 }
 
 // EventhdlrPlugin is a wrapper for the internal SCIP event handler.
 type EventhdlrPlugin struct {
-	raw *C.SCIP_EVENTHDLR
+	raw  *C.SCIP_EVENTHDLR
+	scip *Scip // keeps the owning instance alive and identifies it
 }
 
 // Inner returns the internal raw pointer of the event handler.
