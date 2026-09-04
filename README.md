@@ -77,8 +77,9 @@ solved := model.Solve()
 
 ## Errors
 
-Every operation comes in two forms. `Try*` returns an error and the plain
-name panics with the same value, so pick per call site:
+Every `Model` method that can fail against SCIP comes in two forms. `Try*`
+returns an error and the plain name panics with the same value, so pick per
+call site:
 
 ```go
 v, err := model.TryAddVar(0, 1, 1, "x", scip.VarTypeBinary)
@@ -94,8 +95,10 @@ if errors.As(err, &cp) { /* a plugin panicked: cp.Plugin, cp.Value */ }
 ```
 
 `ReadProb`, `AddSol`, `Write` and the `Set*Param` family return errors under
-their plain names. A freed `Model` reports an error in `StageFree` rather
-than crashing.
+their plain names. `Try*` calls on a freed `Model` report an error in
+`StageFree` rather than crashing. Not covered: the mutators on `Prober`,
+`Diver` and `Row` panic with a `Retcode` on failure, and query methods such
+as `Status` or `NVars` must not be called after `Free`.
 
 ## Nonlinear constraints
 

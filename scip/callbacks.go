@@ -468,14 +468,14 @@ func GoPricerCopy(scip *C.SCIP, pricer *C.SCIP_PRICER, valid *C.uint) (ret C.SCI
 //export GoPricerRedcost
 func GoPricerRedcost(scip *C.SCIP, pricer *C.SCIP_PRICER, lowerbound *C.double, stopearly *C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip, "", 0)
+	defer catchPanic(scip, "pricer", uintptr(C.scipgo_pricerId(pricer)))
 	return callPricer(scip, pricer, lowerbound, stopearly, result, false)
 }
 
 //export GoPricerFarkas
 func GoPricerFarkas(scip *C.SCIP, pricer *C.SCIP_PRICER, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
-	defer catchPanic(scip, "", 0)
+	defer catchPanic(scip, "pricer", uintptr(C.scipgo_pricerId(pricer)))
 	return callPricer(scip, pricer, nil, nil, result, true)
 }
 

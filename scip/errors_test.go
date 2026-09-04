@@ -146,3 +146,18 @@ func TestErrorString(t *testing.T) {
 		t.Fatal("out-of-range stage string")
 	}
 }
+
+type panickingPricer struct{}
+
+func (panickingPricer) GenerateColumns(Model, PricerPlugin, bool) PricerResult { panic("no columns") }
+
+func TestCallbackPanicNamesPricer(t *testing.T) {
+	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
+	defer m.Free()
+	m.Add(NewPricer(panickingPricer{}).Name("boom"))
+	_, err := m.TrySolve()
+	var cp *CallbackPanic
+	if !errors.As(err, &cp) || cp.Plugin != "pricer scip.panickingPricer" || cp.Value != "no columns" {
+		t.Fatalf("got %T %v", err, err)
+	}
+}

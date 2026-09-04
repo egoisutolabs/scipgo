@@ -27,12 +27,14 @@
 // Panics inside a callback are captured and re-raised from the enclosing
 // Solve.
 //
-// Every operation has two forms. The Try* method returns an error: an *Error
-// carrying the operation, SCIP stage and Retcode for a solver failure, or a
-// *CallbackPanic when a plugin callback panicked during a solve. The plain
-// method panics with that same value. errors.Is(err, scip.RetcodeInvalidCall)
-// works on either. Calls on a freed Model return an *Error in StageFree
-// instead of touching SCIP.
+// Every Model method that can fail against SCIP has two forms. The Try*
+// method returns an error: an *Error carrying the operation, SCIP stage and
+// Retcode for a solver failure, or a *CallbackPanic when a plugin callback
+// panicked during a solve. The plain method panics with that same value.
+// errors.Is(err, scip.RetcodeInvalidCall) works on either. Try* calls on a
+// freed Model return an *Error in StageFree instead of touching SCIP; query
+// methods and the Prober, Diver and Row mutators have no Try form and must
+// not be used after Free.
 //
 // A Model and every handle derived from it belong to one goroutine. SCIP
 // instances are released by a finalizer, or immediately by Model.Free, which

@@ -19,11 +19,13 @@ const scipInvalid = 1e99
 // Model represents an optimization model backed by a SCIP instance.
 //
 // Unlike russcip's Model<State> typestate, a single Go type is used for all
-// lifecycle stages; Model.Stage reports the current one. Every operation
-// comes in two forms: a Try* method that returns an error (*Error for a SCIP
-// failure, *CallbackPanic for a panic inside a plugin callback), and a plain
-// method that panics with that same error value. Use Try* in services and the
-// plain form in scripts and tests.
+// lifecycle stages; Model.Stage reports the current one. Every Model method
+// that can fail against SCIP comes in two forms: a Try* method that returns
+// an error (*Error for a SCIP failure, *CallbackPanic for a panic inside a
+// plugin callback), and a plain method that panics with that same error
+// value. Use Try* in services and the plain form in scripts and tests.
+// Mutators on Prober, Diver and Row panic with a Retcode on failure, and
+// query methods (Status, NVars, ...) must not be called on a freed Model.
 //
 // Typical lifecycle:
 //
@@ -107,8 +109,10 @@ func (m Model) CreateProb(name string) Model {
 	return m
 }
 
-// ReadProb reads a problem from the given file. On failure the model is
-// left untouched but the zero Model is returned, matching russcip.
+// ReadProb reads a problem from the given file. On failure the zero Model is
+// returned, matching russcip; the receiver itself may have entered the
+// problem stage with a partially read problem if SCIP failed after creating
+// it, so call FreeTransform/CreateProb before reusing it.
 func (m Model) ReadProb(filename string) (Model, error) {
 	if err := m.guard("ReadProb"); err != nil {
 		return Model{}, err
@@ -218,7 +222,14 @@ func (m Model) TryFree() error {
 	if m.scip == nil {
 		return nil
 	}
-	return m.wrap("Free", m.scip.free(), "")
+	stage := m.scip.stage() // free() clears the instance, so read it first
+	if err := m.scip.free(); err != nil {
+		if rc, ok := err.(Retcode); ok {
+			return &Error{Op: "Free", Stage: stage, Retcode: rc}
+		}
+		return &Error{Op: "Free", Stage: stage, Retcode: RetcodeError, Detail: err.Error()}
+	}
+	return nil
 }
 
 // Free releases the SCIP instance now; see TryFree. It panics on failure.
