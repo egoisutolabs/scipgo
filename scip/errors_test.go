@@ -207,7 +207,8 @@ func TestTrySetBoundNilNode(t *testing.T) {
 	if err := m.TrySetUbNode(nil, x, 0); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("got %v", err)
 	}
-	if err := m.TrySetLbNode(m.BestNode(), x, 0); !errors.Is(err, RetcodeInvalidData) {
+	var none *Node // e.g. BestNode() on an empty tree
+	if err := m.TrySetLbNode(none, x, 0); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("got %v", err)
 	}
 }
