@@ -103,7 +103,7 @@ func (h EventhdlrPlugin) Inner() *C.SCIP_EVENTHDLR { return h.raw }
 
 // Name returns the name of the event handler.
 func (h EventhdlrPlugin) Name() string {
-	defer runtime.KeepAlive(h.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h.live("EventhdlrPlugin.Name")
 	return goString(C.SCIPeventhdlrGetName(h.raw))
 }

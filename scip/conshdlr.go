@@ -123,14 +123,14 @@ func (c ConshdlrPlugin) Inner() *C.SCIP_CONSHDLR { return c.raw }
 
 // Name returns the name of the constraint handler.
 func (c ConshdlrPlugin) Name() string {
-	defer runtime.KeepAlive(c.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("ConshdlrPlugin.Name")
 	return goString(C.SCIPconshdlrGetName(c.raw))
 }
 
 // Desc returns the description of the constraint handler.
 func (c ConshdlrPlugin) Desc() string {
-	defer runtime.KeepAlive(c.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("ConshdlrPlugin.Desc")
 	return goString(C.SCIPconshdlrGetDesc(c.raw))
 }

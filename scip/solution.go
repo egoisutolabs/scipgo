@@ -22,7 +22,7 @@ type Solution struct {
 }
 
 func (s *Scip) newSol(raw *C.SCIP_SOL) Solution {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h := Solution{raw: raw, scip: s}
 	if raw != nil {
 		h.orig = C.SCIPsolIsOriginal(raw) != 0
@@ -39,7 +39,7 @@ func (s Solution) Inner() *C.SCIP_SOL { return s.raw }
 
 // ObjVal returns the objective value of the solution.
 func (s Solution) ObjVal() float64 {
-	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	s.live("Solution.ObjVal")
 	mustStage("Solution.ObjVal", s.scip, stagesOrig)
 	return float64(C.SCIPgetSolOrigObj(s.scip.raw, s.raw))
@@ -47,7 +47,7 @@ func (s Solution) ObjVal() float64 {
 
 // Val returns the value of a variable in the solution.
 func (s Solution) Val(v Variable) float64 {
-	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	s.live("Solution.Val")
 	mustStage("Solution.Val", s.scip, stagesOrig)
 	must(Model{scip: s.scip}.checkVars("Solution.Val", v))
@@ -62,7 +62,7 @@ func (s Solution) SetVal(v Variable, val float64) {
 
 // TrySetVal is SetVal returning an error instead of panicking.
 func (s Solution) TrySetVal(v Variable, val float64) error {
-	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	m := Model{scip: s.scip}
 	if err := m.checkHandle("Solution.SetVal", "Solution", s.raw != nil, s.scip, s.gen, s.orig); err != nil {
 		return err
@@ -76,7 +76,7 @@ func (s Solution) TrySetVal(v Variable, val float64) error {
 // IsPartial returns whether this is a partial solution: unset variables are
 // UNKNOWN rather than zero.
 func (s Solution) IsPartial() bool {
-	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	s.live("Solution.IsPartial")
 	return C.SCIPsolIsPartial(s.raw) == 1
 }
@@ -84,7 +84,7 @@ func (s Solution) IsPartial() bool {
 // AsNameMap returns the solution as a var-name to value map, skipping values
 // that are zero within tolerance.
 func (s Solution) AsNameMap() map[string]float64 {
-	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	s.live("Solution.AsNameMap")
 	mustStage("Solution.AsNameMap", s.scip, stagesTrans) // SCIPgetVars
 	vars := C.SCIPgetVars(s.scip.raw)
@@ -104,7 +104,7 @@ func (s Solution) AsNameMap() map[string]float64 {
 // AsIDMap returns the solution as a var-probindex to value map, skipping
 // values that are zero within tolerance.
 func (s Solution) AsIDMap() map[int]float64 {
-	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	s.live("Solution.AsIDMap")
 	mustStage("Solution.AsIDMap", s.scip, stagesTrans) // SCIPgetVars
 	vars := C.SCIPgetVars(s.scip.raw)
@@ -123,7 +123,7 @@ func (s Solution) AsIDMap() map[int]float64 {
 
 // String implements fmt.Stringer, mirroring the Rust Debug impl.
 func (s Solution) String() string {
-	defer runtime.KeepAlive(s.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	s.live("Solution.String")
 	mustStage("Solution.String", s.scip, stagesOrig) // SCIPgetOrigVars, SCIPgetSolVal
 	var b strings.Builder

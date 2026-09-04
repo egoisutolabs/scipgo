@@ -18,7 +18,7 @@ type Diver struct {
 // diving. allowed must be a subset of stagesInDive, the stages where
 // SCIPinDive itself is defined, so the stage is read once.
 func (d *Diver) active(op string, allowed stageSet) error {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	m := Model{scip: d.scip}
 	if err := m.query(op, allowed); err != nil {
 		return err
@@ -63,7 +63,7 @@ func (d *Diver) ChgVarLb(v Variable, newBound float64) { must(d.TryChgVarLb(v, n
 
 // TryChgVarLb is ChgVarLb returning an error instead of panicking.
 func (d *Diver) TryChgVarLb(v Variable, newBound float64) error {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return d.varOp("Diver.ChgVarLb", v, func() C.SCIP_RETCODE { return C.SCIPchgVarLbDive(d.scip.raw, v.raw, C.double(newBound)) })
 }
 
@@ -72,7 +72,7 @@ func (d *Diver) ChgVarUb(v Variable, newBound float64) { must(d.TryChgVarUb(v, n
 
 // TryChgVarUb is ChgVarUb returning an error instead of panicking.
 func (d *Diver) TryChgVarUb(v Variable, newBound float64) error {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return d.varOp("Diver.ChgVarUb", v, func() C.SCIP_RETCODE { return C.SCIPchgVarUbDive(d.scip.raw, v.raw, C.double(newBound)) })
 }
 
@@ -82,14 +82,14 @@ func (d *Diver) ChgVarObj(v Variable, newObj float64) { must(d.TryChgVarObj(v, n
 
 // TryChgVarObj is ChgVarObj returning an error instead of panicking.
 func (d *Diver) TryChgVarObj(v Variable, newObj float64) error {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return d.varOp("Diver.ChgVarObj", v, func() C.SCIP_RETCODE { return C.SCIPchgVarObjDive(d.scip.raw, v.raw, C.double(newObj)) })
 }
 
 // SolveLp solves the dive LP with an optional iteration limit (<= 0 means
 // unlimited) and reports whether it was solved to optimality.
 func (d *Diver) SolveLp(iterationLimit int) (bool, error) {
-	defer runtime.KeepAlive(d.scip)                                  // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root())                           // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := d.active("Diver.SolveLp", stagesSolving); err != nil { // SCIPsolveDiveLP, SCIPgetLPSolstat
 		return false, err
 	}
@@ -112,7 +112,7 @@ func (d *Diver) AddRow(r Row) { must(d.TryAddRow(r)) }
 
 // TryAddRow is AddRow returning an error instead of panicking.
 func (d *Diver) TryAddRow(r Row) error {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return d.rowOp("Diver.AddRow", r, func() C.SCIP_RETCODE { return C.SCIPaddRowDive(d.scip.raw, r.raw) })
 }
 
@@ -121,7 +121,7 @@ func (d *Diver) ChgRowLhs(r Row, newLhs float64) { must(d.TryChgRowLhs(r, newLhs
 
 // TryChgRowLhs is ChgRowLhs returning an error instead of panicking.
 func (d *Diver) TryChgRowLhs(r Row, newLhs float64) error {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return d.rowOp("Diver.ChgRowLhs", r, func() C.SCIP_RETCODE { return C.SCIPchgRowLhsDive(d.scip.raw, r.raw, C.double(newLhs)) })
 }
 
@@ -130,34 +130,34 @@ func (d *Diver) ChgRowRhs(r Row, newRhs float64) { must(d.TryChgRowRhs(r, newRhs
 
 // TryChgRowRhs is ChgRowRhs returning an error instead of panicking.
 func (d *Diver) TryChgRowRhs(r Row, newRhs float64) error {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return d.rowOp("Diver.ChgRowRhs", r, func() C.SCIP_RETCODE { return C.SCIPchgRowRhsDive(d.scip.raw, r.raw, C.double(newRhs)) })
 }
 
 // VarObj returns a variable's objective coefficient in the dive.
 func (d *Diver) VarObj(v Variable) float64 {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	d.varGet("Diver.VarObj", v)
 	return float64(C.SCIPgetVarObjDive(d.scip.raw, v.raw))
 }
 
 // VarLb returns a variable's lower bound in the dive.
 func (d *Diver) VarLb(v Variable) float64 {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	d.varGet("Diver.VarLb", v)
 	return float64(C.SCIPgetVarLbDive(d.scip.raw, v.raw))
 }
 
 // VarUb returns a variable's upper bound in the dive.
 func (d *Diver) VarUb(v Variable) float64 {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	d.varGet("Diver.VarUb", v)
 	return float64(C.SCIPgetVarUbDive(d.scip.raw, v.raw))
 }
 
 // LastDiveNode returns the number of the last node a dive was started at.
 func (d *Diver) LastDiveNode() int {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(Model{scip: d.scip}.query("Diver.LastDiveNode", stagesInDive))
 	return int(C.SCIPgetLastDivenode(d.scip.raw))
 }
@@ -167,7 +167,7 @@ func (d *Diver) ChgCutoffBound(cutoff float64) { must(d.TryChgCutoffBound(cutoff
 
 // TryChgCutoffBound is ChgCutoffBound returning an error instead of panicking.
 func (d *Diver) TryChgCutoffBound(cutoff float64) error {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := d.active("Diver.ChgCutoffBound", stagesInDive); err != nil {
 		return err
 	}
@@ -179,7 +179,7 @@ func (d *Diver) End() { must(d.TryEnd()) }
 
 // TryEnd ends diving mode, returning an error if SCIP is not diving.
 func (d *Diver) TryEnd() error {
-	defer runtime.KeepAlive(d.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := d.active("Diver.End", stagesInDive); err != nil {
 		return err
 	}

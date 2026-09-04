@@ -23,21 +23,21 @@ func (p PresolverPlugin) Inner() *C.SCIP_PRESOL { return p.raw }
 
 // Name returns the name of the presolver.
 func (p PresolverPlugin) Name() string {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	p.live("PresolverPlugin.Name")
 	return goString(C.SCIPpresolGetName(p.raw))
 }
 
 // Desc returns the description of the presolver.
 func (p PresolverPlugin) Desc() string {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	p.live("PresolverPlugin.Desc")
 	return goString(C.SCIPpresolGetDesc(p.raw))
 }
 
 // Priority returns the priority of the presolver.
 func (p PresolverPlugin) Priority() int32 {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	p.live("PresolverPlugin.Priority")
 	return int32(C.SCIPpresolGetPriority(p.raw))
 }
@@ -45,21 +45,21 @@ func (p PresolverPlugin) Priority() int32 {
 // MaxRounds returns the maximal number of presolving rounds the presolver
 // participates in; -1 means no limit.
 func (p PresolverPlugin) MaxRounds() int32 {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	p.live("PresolverPlugin.MaxRounds")
 	return int32(C.SCIPpresolGetMaxrounds(p.raw))
 }
 
 // NCalls returns the number of times the presolver was called.
 func (p PresolverPlugin) NCalls() int {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	p.live("PresolverPlugin.NCalls")
 	return int(C.SCIPpresolGetNCalls(p.raw))
 }
 
 // Time returns the time spent in the presolver, in seconds.
 func (p PresolverPlugin) Time() float64 {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	p.live("PresolverPlugin.Time")
 	return float64(C.SCIPpresolGetTime(p.raw))
 }

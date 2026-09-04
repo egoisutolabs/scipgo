@@ -19,7 +19,7 @@ type Prober struct {
 // probing. allowed must be a subset of stagesTransformed, the stages where
 // SCIPinProbing itself is defined, so the stage is read once.
 func (p *Prober) active(op string, allowed stageSet) error {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	m := Model{scip: p.scip}
 	if err := m.query(op, allowed); err != nil {
 		return err
@@ -47,7 +47,7 @@ func (p *Prober) NewNode() { must(p.TryNewNode()) }
 
 // TryNewNode creates a new probing sub node, returning an error on failure.
 func (p *Prober) TryNewNode() error {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := p.active("Prober.NewNode", stagesTransformed); err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func (p *Prober) TryNewNode() error {
 
 // Depth returns the current probing depth.
 func (p *Prober) Depth() int {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(p.active("Prober.Depth", stagesProbingDepth))
 	return int(C.SCIPgetProbingDepth(p.scip.raw))
 }
@@ -67,7 +67,7 @@ func (p *Prober) Backtrack(depth int) { must(p.TryBacktrack(depth)) }
 // TryBacktrack undoes all probing changes above the given depth, which must
 // be non-negative and at most the current probing depth (equal is a no-op).
 func (p *Prober) TryBacktrack(depth int) error {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	m := Model{scip: p.scip}
 	if depth < 0 {
 		return m.invalid("Prober.Backtrack", RetcodeInvalidData, "negative depth")
@@ -86,7 +86,7 @@ func (p *Prober) ChgVarLb(v Variable, newBound float64) { must(p.TryChgVarLb(v, 
 
 // TryChgVarLb is ChgVarLb returning an error instead of panicking.
 func (p *Prober) TryChgVarLb(v Variable, newBound float64) error {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return p.varOp("Prober.ChgVarLb", v, func() C.SCIP_RETCODE { return C.SCIPchgVarLbProbing(p.scip.raw, v.raw, C.double(newBound)) })
 }
 
@@ -95,13 +95,13 @@ func (p *Prober) ChgVarUb(v Variable, newBound float64) { must(p.TryChgVarUb(v, 
 
 // TryChgVarUb is ChgVarUb returning an error instead of panicking.
 func (p *Prober) TryChgVarUb(v Variable, newBound float64) error {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return p.varOp("Prober.ChgVarUb", v, func() C.SCIP_RETCODE { return C.SCIPchgVarUbProbing(p.scip.raw, v.raw, C.double(newBound)) })
 }
 
 // VarObj returns a variable's objective coefficient in probing.
 func (p *Prober) VarObj(v Variable) float64 {
-	defer runtime.KeepAlive(p.scip)                // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root())         // pin the strong instance, not a weak wrapper, until the C call returns
 	must(p.active("Prober.VarObj", stagesSolving)) // SCIPgetVarObjProbing
 	must(Model{scip: p.scip}.checkVars("Prober.VarObj", v))
 	return float64(C.SCIPgetVarObjProbing(p.scip.raw, v.raw))
@@ -112,7 +112,7 @@ func (p *Prober) FixVar(v Variable, value float64) { must(p.TryFixVar(v, value))
 
 // TryFixVar is FixVar returning an error instead of panicking.
 func (p *Prober) TryFixVar(v Variable, value float64) error {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return p.varOp("Prober.FixVar", v, func() C.SCIP_RETCODE { return C.SCIPfixVarProbing(p.scip.raw, v.raw, C.double(value)) })
 }
 
@@ -122,13 +122,13 @@ func (p *Prober) ChgVarObj(v Variable, newObj float64) { must(p.TryChgVarObj(v, 
 
 // TryChgVarObj is ChgVarObj returning an error instead of panicking.
 func (p *Prober) TryChgVarObj(v Variable, newObj float64) error {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return p.varOp("Prober.ChgVarObj", v, func() C.SCIP_RETCODE { return C.SCIPchgVarObjProbing(p.scip.raw, v.raw, C.double(newObj)) })
 }
 
 // IsObjChanged reports whether the objective was changed in probing.
 func (p *Prober) IsObjChanged() bool {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(p.active("Prober.IsObjChanged", stagesTransformed))
 	return C.SCIPisObjChangedProbing(p.scip.raw) != 0
 }
@@ -144,7 +144,7 @@ func (p *Prober) Propagate(maxRounds int) (bool, int) {
 
 // TryPropagate is Propagate returning an error instead of panicking.
 func (p *Prober) TryPropagate(maxRounds int) (cutoff bool, nReductions int, err error) {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := p.active("Prober.Propagate", stagesTransformed); err != nil {
 		return false, 0, err
 	}
@@ -171,7 +171,7 @@ func (p *Prober) PropagateImplications() bool {
 // TryPropagateImplications is PropagateImplications returning an error
 // instead of panicking.
 func (p *Prober) TryPropagateImplications() (bool, error) {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := p.active("Prober.PropagateImplications", stagesTransformed); err != nil {
 		return false, err
 	}
@@ -185,7 +185,7 @@ func (p *Prober) TryPropagateImplications() (bool, error) {
 // SolveLp solves the probing LP with an optional iteration limit (<= 0 means
 // unlimited) and reports whether the node was cut off.
 func (p *Prober) SolveLp(iterationLimit int) (bool, error) {
-	defer runtime.KeepAlive(p.scip)                                   // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root())                            // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := p.active("Prober.SolveLp", stagesSolving); err != nil { // SCIPisLPConstructed
 		return false, err
 	}
@@ -212,7 +212,7 @@ func (p *Prober) SolveLp(iterationLimit int) (bool, error) {
 // maxPricingRounds rounds (<= 0 means unlimited), and reports whether the
 // node was cut off.
 func (p *Prober) SolveLpWithPricing(maxPricingRounds int) (bool, error) {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := p.active("Prober.SolveLpWithPricing", stagesSolving); err != nil {
 		return false, err
 	}
@@ -243,7 +243,7 @@ func (p *Prober) AddRow(r Row) { must(p.TryAddRow(r)) }
 
 // TryAddRow is AddRow returning an error instead of panicking.
 func (p *Prober) TryAddRow(r Row) error {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	m := Model{scip: p.scip}
 	if err := p.active("Prober.AddRow", stagesTransformed); err != nil {
 		return err
@@ -259,7 +259,7 @@ func (p *Prober) End() { must(p.TryEnd()) }
 
 // TryEnd ends probing mode, returning an error if SCIP is not probing.
 func (p *Prober) TryEnd() error {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := p.active("Prober.End", stagesTransformed); err != nil {
 		return err
 	}
@@ -268,7 +268,7 @@ func (p *Prober) TryEnd() error {
 
 // InProbing reports whether the model is in probing mode.
 func InProbing(m Model) bool {
-	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.guard("InProbing"))
 	if !stagesTransformed.has(m.scip.stage()) {
 		return false
@@ -278,7 +278,7 @@ func InProbing(m Model) bool {
 
 // InDive reports whether the model is in diving mode.
 func InDive(m Model) bool {
-	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.guard("InDive"))
 	if !stagesInDive.has(m.scip.stage()) {
 		return false

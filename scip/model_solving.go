@@ -376,7 +376,7 @@ func (m Model) AddCut(cut Row, forceCut bool) bool {
 
 // CurrentVal returns the value of a variable in the current LP/pseudo solution.
 func (m Model) CurrentVal(v Variable) float64 {
-	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.query("CurrentVal", stagesVarSol))
 	must(m.checkVars("CurrentVal", v))
 	return float64(C.SCIPgetSolVal(m.scip.raw, nil, v.raw))
@@ -385,7 +385,7 @@ func (m Model) CurrentVal(v Variable) float64 {
 // TryStartProbing starts probing at the current node. The returned Prober
 // must be ended with End.
 func (m Model) TryStartProbing() (*Prober, error) {
-	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("StartProbing"); err != nil {
 		return nil, err
 	}
@@ -405,7 +405,7 @@ func (m Model) StartProbing() *Prober {
 // TryStartDiving starts diving at the current node. The returned Diver must
 // be ended with End.
 func (m Model) TryStartDiving() (*Diver, error) {
-	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	// SCIPisLPConstructed and SCIPstartDive abort outside solving.
 	if err := m.query("StartDiving", stagesSolving); err != nil {
 		return nil, err
@@ -445,7 +445,7 @@ func (m Model) LpStatus() LPStatus {
 
 // TrySetUbNode changes the upper bound of the variable in a given node.
 func (m Model) TrySetUbNode(node *Node, v Variable, ub float64) error {
-	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetUbNode"); err != nil {
 		return err
 	}
@@ -464,7 +464,7 @@ func (m Model) SetUbNode(node *Node, v Variable, ub float64) { must(m.TrySetUbNo
 
 // TrySetLbNode changes the lower bound of the variable in a given node.
 func (m Model) TrySetLbNode(node *Node, v Variable, lb float64) error {
-	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetLbNode"); err != nil {
 		return err
 	}

@@ -74,6 +74,15 @@ func TestEveryNativeCallKeepsItsOwnerAlive(t *testing.T) {
 						keeps = true
 					}
 				}
+				// the pinned value must be the strong instance (.root()), never a
+				// weak wrapper whose owner could still be collected mid-call
+				if call, ok := n.(*ast.CallExpr); ok {
+					if fsel, ok := call.Fun.(*ast.SelectorExpr); ok && fsel.Sel.Name == "KeepAlive" && len(call.Args) == 1 {
+						if arg, ok := call.Args[0].(*ast.CallExpr); !ok || !isRootCall(arg) {
+							t.Errorf("%s: %s.%s pins something other than <wrapper>.root()", fset.Position(call.Pos()), id.Name, fn.Name.Name)
+						}
+					}
+				}
 				return true
 			})
 			if entersC && !keeps {
@@ -81,4 +90,9 @@ func TestEveryNativeCallKeepsItsOwnerAlive(t *testing.T) {
 			}
 		}
 	}
+}
+
+func isRootCall(c *ast.CallExpr) bool {
+	sel, ok := c.Fun.(*ast.SelectorExpr)
+	return ok && sel.Sel.Name == "root" && len(c.Args) == 0
 }

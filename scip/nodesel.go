@@ -40,28 +40,28 @@ func (n NodeselPlugin) Inner() *C.SCIP_NODESEL { return n.raw }
 
 // Name returns the name of the node selector.
 func (n NodeselPlugin) Name() string {
-	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(n.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n.live("NodeselPlugin.Name")
 	return goString(C.SCIPnodeselGetName(n.raw))
 }
 
 // Desc returns the description of the node selector.
 func (n NodeselPlugin) Desc() string {
-	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(n.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n.live("NodeselPlugin.Desc")
 	return goString(C.SCIPnodeselGetDesc(n.raw))
 }
 
 // StdPriority returns the standard priority of the node selector.
 func (n NodeselPlugin) StdPriority() int32 {
-	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(n.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n.live("NodeselPlugin.StdPriority")
 	return int32(C.SCIPnodeselGetStdPriority(n.raw))
 }
 
 // MemSavePriority returns the memory saving priority of the node selector.
 func (n NodeselPlugin) MemSavePriority() int32 {
-	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(n.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n.live("NodeselPlugin.MemSavePriority")
 	return int32(C.SCIPnodeselGetMemsavePriority(n.raw))
 }

@@ -16,7 +16,7 @@ type Constraint struct {
 }
 
 func (s *Scip) newCons(raw *C.SCIP_CONS) Constraint {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h := Constraint{raw: raw, scip: s}
 	if raw != nil {
 		h.orig = C.SCIPconsIsOriginal(raw) != 0
@@ -33,14 +33,14 @@ func (c Constraint) Inner() *C.SCIP_CONS { return c.raw }
 
 // Name returns the name of the constraint.
 func (c Constraint) Name() string {
-	defer runtime.KeepAlive(c.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("Constraint.Name")
 	return goString(C.SCIPconsGetName(c.raw))
 }
 
 // Row returns the row associated with the constraint, if any.
 func (c Constraint) Row() (Row, bool) {
-	defer runtime.KeepAlive(c.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("Constraint.Row")
 	rowPtr := C.SCIPconsGetRow(c.scip.raw, c.raw)
 	if rowPtr == nil {
@@ -52,7 +52,7 @@ func (c Constraint) Row() (Row, bool) {
 // DualSol returns the dual solution of the linear constraint in the current
 // LP. Returns false if the constraint is not a linear constraint.
 func (c Constraint) DualSol() (float64, bool) {
-	defer runtime.KeepAlive(c.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("Constraint.DualSol")
 	if !c.isLinearCons() {
 		return 0, false
@@ -64,7 +64,7 @@ func (c Constraint) DualSol() (float64, bool) {
 // the current (infeasible) LP. Returns false if the constraint is not a
 // linear constraint.
 func (c Constraint) FarkasDualSol() (float64, bool) {
-	defer runtime.KeepAlive(c.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("Constraint.FarkasDualSol")
 	if !c.isLinearCons() {
 		return 0, false
@@ -73,7 +73,7 @@ func (c Constraint) FarkasDualSol() (float64, bool) {
 }
 
 func (c Constraint) isLinearCons() bool {
-	defer runtime.KeepAlive(c.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	c.live("Constraint.isLinearCons")
 	hdlr := C.SCIPconsGetHdlr(c.raw)
 	if hdlr == nil {

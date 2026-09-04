@@ -32,28 +32,28 @@ func (n Node) Inner() *C.SCIP_NODE { return n.raw }
 
 // Number returns the number of the node.
 func (n Node) Number() int {
-	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(n.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n.live("Node.Number")
 	return int(C.SCIPnodeGetNumber(n.raw))
 }
 
 // Depth returns the depth of the node in the branch-and-bound tree.
 func (n Node) Depth() int {
-	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(n.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n.live("Node.Depth")
 	return int(C.SCIPnodeGetDepth(n.raw))
 }
 
 // LowerBound returns the lower bound of the node.
 func (n Node) LowerBound() float64 {
-	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(n.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n.live("Node.LowerBound")
 	return float64(C.SCIPnodeGetLowerbound(n.raw))
 }
 
 // Parent returns the parent of the node and false if the node is the root node.
 func (n Node) Parent() (Node, bool) {
-	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(n.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n.live("Node.Parent")
 	parent := C.SCIPnodeGetParent(n.raw)
 	if parent == nil {
@@ -64,7 +64,7 @@ func (n Node) Parent() (Node, bool) {
 
 // NChildren returns the number of children of the node.
 func (n Node) NChildren() int {
-	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(n.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n.live("Node.NChildren")
 	// SCIPgetNChildren reports the focus node's children only, and there is
 	// a focus node only in stagesFocus (SCIPgetFocusNode is undefined elsewhere).
@@ -86,7 +86,7 @@ func (n Node) Children() []Node {
 // exposes the focus node's children, so any other node is rejected; outside
 // the solving stages there are none and it returns nil, nil.
 func (n Node) TryChildren() ([]Node, error) {
-	defer runtime.KeepAlive(n.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(n.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	m := Model{scip: n.scip}
 	if err := m.checkHandle("Node.Children", "Node", n.raw != nil, n.scip, n.gen, false); err != nil {
 		return nil, err

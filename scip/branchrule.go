@@ -86,35 +86,35 @@ func (b BranchRulePlugin) Inner() *C.SCIP_BRANCHRULE { return b.raw }
 
 // Name returns the name of the branch rule.
 func (b BranchRulePlugin) Name() string {
-	defer runtime.KeepAlive(b.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(b.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	b.live("BranchRulePlugin.Name")
 	return goString(C.SCIPbranchruleGetName(b.raw))
 }
 
 // Desc returns the description of the branch rule.
 func (b BranchRulePlugin) Desc() string {
-	defer runtime.KeepAlive(b.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(b.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	b.live("BranchRulePlugin.Desc")
 	return goString(C.SCIPbranchruleGetDesc(b.raw))
 }
 
 // Priority returns the priority of the branch rule.
 func (b BranchRulePlugin) Priority() int32 {
-	defer runtime.KeepAlive(b.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(b.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	b.live("BranchRulePlugin.Priority")
 	return int32(C.SCIPbranchruleGetPriority(b.raw))
 }
 
 // MaxDepth returns the maxdepth of the branch rule.
 func (b BranchRulePlugin) MaxDepth() int32 {
-	defer runtime.KeepAlive(b.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(b.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	b.live("BranchRulePlugin.MaxDepth")
 	return int32(C.SCIPbranchruleGetMaxdepth(b.raw))
 }
 
 // MaxBoundDist returns the maxbounddist of the branch rule.
 func (b BranchRulePlugin) MaxBoundDist() float64 {
-	defer runtime.KeepAlive(b.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(b.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	b.live("BranchRulePlugin.MaxBoundDist")
 	return float64(C.SCIPbranchruleGetMaxbounddist(b.raw))
 }

@@ -46,7 +46,7 @@ func (s Stage) String() string {
 
 // stage reads the instance's current stage; a freed instance reports StageFree.
 func (s *Scip) stage() Stage {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if !s.alive() {
 		return StageFree
 	}

@@ -126,7 +126,7 @@ func (m Model) Write(path, ext string, symb bool) error {
 // name and type. During solving the transformed variable is returned,
 // mirroring russcip's Model<Solving>::add_var.
 func (m Model) TryAddVar(lb, ub, obj float64, name string, varType VarType) (Variable, error) {
-	defer runtime.KeepAlive(m.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("AddVar"); err != nil {
 		return Variable{}, err
 	}

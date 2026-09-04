@@ -23,35 +23,35 @@ func (h HeurPlugin) Inner() *C.SCIP_HEUR { return h.raw }
 
 // Name returns the name of the heuristic.
 func (h HeurPlugin) Name() string {
-	defer runtime.KeepAlive(h.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h.live("HeurPlugin.Name")
 	return goString(C.SCIPheurGetName(h.raw))
 }
 
 // Desc returns the description of the heuristic.
 func (h HeurPlugin) Desc() string {
-	defer runtime.KeepAlive(h.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h.live("HeurPlugin.Desc")
 	return goString(C.SCIPheurGetDesc(h.raw))
 }
 
 // Priority returns the priority of the heuristic.
 func (h HeurPlugin) Priority() int32 {
-	defer runtime.KeepAlive(h.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h.live("HeurPlugin.Priority")
 	return int32(C.SCIPheurGetPriority(h.raw))
 }
 
 // Freq returns the calling frequency of the heuristic; -1 means disabled.
 func (h HeurPlugin) Freq() int32 {
-	defer runtime.KeepAlive(h.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h.live("HeurPlugin.Freq")
 	return int32(C.SCIPheurGetFreq(h.raw))
 }
 
 // SetFreq sets the calling frequency of the heuristic; -1 disables it.
 func (h HeurPlugin) SetFreq(freq int32) {
-	defer runtime.KeepAlive(h.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h.live("HeurPlugin.SetFreq")
 	C.SCIPheurSetFreq(h.raw, C.int(freq))
 }
@@ -59,7 +59,7 @@ func (h HeurPlugin) SetFreq(freq int32) {
 // NCalls returns the number of times the heuristic was called during the
 // solving process.
 func (h HeurPlugin) NCalls() int {
-	defer runtime.KeepAlive(h.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h.live("HeurPlugin.NCalls")
 	return int(C.SCIPheurGetNCalls(h.raw))
 }
@@ -67,7 +67,7 @@ func (h HeurPlugin) NCalls() int {
 // NSolsFound returns the number of solutions the heuristic found during the
 // solving process.
 func (h HeurPlugin) NSolsFound() int {
-	defer runtime.KeepAlive(h.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h.live("HeurPlugin.NSolsFound")
 	return int(C.SCIPheurGetNSolsFound(h.raw))
 }
@@ -75,7 +75,7 @@ func (h HeurPlugin) NSolsFound() int {
 // NBestSolsFound returns the number of new best (incumbent) solutions the
 // heuristic found during the solving process.
 func (h HeurPlugin) NBestSolsFound() int {
-	defer runtime.KeepAlive(h.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h.live("HeurPlugin.NBestSolsFound")
 	return int(C.SCIPheurGetNBestSolsFound(h.raw))
 }

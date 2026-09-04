@@ -95,6 +95,27 @@ func (s *Scip) gen(orig bool) uint64 {
 	return s.root().transGen
 }
 
+// problemIdentity captures what distinguishes one problem from its
+// replacement: stage, name, and the original variable array (a recreated
+// problem allocates a new one). Only meaningful in stages with a problem.
+type problemIdentity struct {
+	stage Stage
+	name  string
+	nVars int
+	vars  **C.SCIP_VAR
+}
+
+func (s *Scip) problemIdentity() problemIdentity {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	id := problemIdentity{stage: s.stage()}
+	if stagesOrig.has(id.stage) {
+		id.name = goString(C.SCIPgetProbName(s.raw))
+		id.nVars = int(C.SCIPgetNOrigVars(s.raw))
+		id.vars = C.SCIPgetOrigVars(s.raw)
+	}
+	return id
+}
+
 // newProblem records that the problem was replaced: every handle is dead.
 func (s *Scip) newProblem() {
 	r := s.root()
@@ -128,7 +149,7 @@ func (s *Scip) release() {
 // free releases the instance; it keeps going past individual release
 // failures so SCIPfree always runs, and returns the first error seen.
 func (s *Scip) free() error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	s.mu.Lock()
 	if s.freed.Load() || s.weak {
 		s.mu.Unlock()
@@ -197,14 +218,14 @@ func (s *Scip) free() error {
 // ------------------------------------------------------------- parameters
 
 func (s *Scip) setStrParam(param, value string) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cp, cv := cString(param), cString(value)
 	defer func() { freeCString(cp); freeCString(cv) }()
 	return retcodeError(C.SCIPsetStringParam(s.raw, cp, cv))
 }
 
 func (s *Scip) strParam(param string) (string, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cp := cString(param)
 	defer freeCString(cp)
 	var value *C.char
@@ -215,7 +236,7 @@ func (s *Scip) strParam(param string) (string, error) {
 }
 
 func (s *Scip) setBoolParam(param string, value bool) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cp := cString(param)
 	defer freeCString(cp)
 	var v C.uint
@@ -226,7 +247,7 @@ func (s *Scip) setBoolParam(param string, value bool) error {
 }
 
 func (s *Scip) boolParam(param string) (bool, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cp := cString(param)
 	defer freeCString(cp)
 	var value C.uint
@@ -237,14 +258,14 @@ func (s *Scip) boolParam(param string) (bool, error) {
 }
 
 func (s *Scip) setIntParam(param string, value int32) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cp := cString(param)
 	defer freeCString(cp)
 	return retcodeError(C.SCIPsetIntParam(s.raw, cp, C.int(value)))
 }
 
 func (s *Scip) intParam(param string) (int32, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cp := cString(param)
 	defer freeCString(cp)
 	var value C.int
@@ -255,14 +276,14 @@ func (s *Scip) intParam(param string) (int32, error) {
 }
 
 func (s *Scip) setLongintParam(param string, value int64) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cp := cString(param)
 	defer freeCString(cp)
 	return retcodeError(C.SCIPsetLongintParam(s.raw, cp, C.longlong(value)))
 }
 
 func (s *Scip) longintParam(param string) (int64, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cp := cString(param)
 	defer freeCString(cp)
 	var value C.longlong
@@ -273,14 +294,14 @@ func (s *Scip) longintParam(param string) (int64, error) {
 }
 
 func (s *Scip) setRealParam(param string, value float64) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cp := cString(param)
 	defer freeCString(cp)
 	return retcodeError(C.SCIPsetRealParam(s.raw, cp, C.double(value)))
 }
 
 func (s *Scip) realParam(param string) (float64, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cp := cString(param)
 	defer freeCString(cp)
 	var value C.double
@@ -291,24 +312,24 @@ func (s *Scip) realParam(param string) (float64, error) {
 }
 
 func (s *Scip) setPresolving(setting ParamSetting) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPsetPresolving(s.raw, setting.toC(), 1))
 }
 
 func (s *Scip) setSeparating(setting ParamSetting) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPsetSeparating(s.raw, setting.toC(), 1))
 }
 
 func (s *Scip) setHeuristics(setting ParamSetting) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPsetHeuristics(s.raw, setting.toC(), 1))
 }
 
 // ------------------------------------------------------------- lifecycle
 
 func (s *Scip) createProb(name string) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	err := retcodeError(C.SCIPcreateProbBasic(s.raw, cn))
@@ -319,11 +340,18 @@ func (s *Scip) createProb(name string) error {
 }
 
 func (s *Scip) readProb(filename string) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
-	s.newProblem()             // a read replaces the problem, even one that fails part way
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cf := cString(filename)
 	defer freeCString(cf)
+	// A reader replaces the problem by calling SCIPcreateProb, possibly before
+	// failing; a read that fails earlier (no file, wrong stage) leaves it
+	// untouched. Detect replacement by comparing the problem's identity
+	// around the call so handles are invalidated only when it really changed.
+	before := s.problemIdentity()
 	rc := C.SCIPreadProb(s.raw, cf, nil)
+	if rc == C.SCIP_OKAY || s.problemIdentity() != before {
+		s.newProblem()
+	}
 
 	// SCIPreadProb creates the problem (and its variables/constraints)
 	// before it can fail on, e.g., invalid data. Capture them here whenever
@@ -346,62 +374,62 @@ func (s *Scip) readProb(filename string) error {
 }
 
 func (s *Scip) setObjSense(sense ObjSense) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPsetObjsense(s.raw, sense.toC()))
 }
 
 func (s *Scip) setObjIntegral() error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPsetObjIntegral(s.raw))
 }
 
 func (s *Scip) nVars() int {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return int(C.SCIPgetNVars(s.raw))
 }
 
 func (s *Scip) nConss() int {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return int(C.SCIPgetNConss(s.raw))
 }
 
 func (s *Scip) findCons(name string) *C.SCIP_CONS {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	return C.SCIPfindCons(s.raw, cn)
 }
 
 func (s *Scip) findHeur(name string) *C.SCIP_HEUR {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	return C.SCIPfindHeur(s.raw, cn)
 }
 
 func (s *Scip) findSepa(name string) *C.SCIP_SEPA {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	return C.SCIPfindSepa(s.raw, cn)
 }
 
 func (s *Scip) findPresol(name string) *C.SCIP_PRESOL {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	return C.SCIPfindPresol(s.raw, cn)
 }
 
 func (s *Scip) findNodesel(name string) *C.SCIP_NODESEL {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	return C.SCIPfindNodesel(s.raw, cn)
 }
 
 func (s *Scip) getTransformedCons(c Constraint) (*C.SCIP_CONS, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var transformed *C.SCIP_CONS
 	if err := retcodeError(C.SCIPgetTransformedCons(s.raw, c.raw, &transformed)); err != nil {
 		return nil, err
@@ -410,7 +438,7 @@ func (s *Scip) getTransformedCons(c Constraint) (*C.SCIP_CONS, error) {
 }
 
 func (s *Scip) status() Status {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	// Since SCIP 10, SCIPgetStatus dereferences scip->stat, which is not
 	// allocated before a problem is created (the INIT stage).
 	if C.SCIPgetStage(s.raw) == C.SCIP_STAGE_INIT {
@@ -420,12 +448,12 @@ func (s *Scip) status() Status {
 }
 
 func (s *Scip) printVersion() {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	C.SCIPprintVersion(s.raw, nil)
 }
 
 func (s *Scip) write(path, ext string, symb bool) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	// SCIPwriteOrigProblem takes "genericnames", the inverse of symb.
 	genericNames := C.uint(1)
 	if symb {
@@ -437,14 +465,14 @@ func (s *Scip) write(path, ext string, symb bool) error {
 }
 
 func (s *Scip) includeDefaultPlugins() error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPincludeDefaultPlugins(s.raw))
 }
 
 // statisticsJSON returns the solving statistics in JSON format
 // (SCIPprintStatisticsJson), capturing output through a temporary file.
 func (s *Scip) statisticsJSON() (string, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	file := C.tmpfile()
 	if file == nil {
 		return "", RetcodeFileCreateError
@@ -470,7 +498,7 @@ func (s *Scip) statisticsJSON() (string, error) {
 }
 
 func (s *Scip) writeStatisticsJSON(path string) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cp := cString(path)
 	cw := cString("w")
 	defer func() { freeCString(cp); freeCString(cw) }()
@@ -485,7 +513,7 @@ func (s *Scip) writeStatisticsJSON(path string) error {
 
 // vars returns the problem (or original) variables keyed by their index.
 func (s *Scip) vars(original bool) map[int]*C.SCIP_VAR {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var nVars int
 	var scipVars **C.SCIP_VAR
 	if original {
@@ -504,7 +532,7 @@ func (s *Scip) vars(original bool) map[int]*C.SCIP_VAR {
 }
 
 func (s *Scip) conss() []*C.SCIP_CONS {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n := s.nConss()
 	scipConss := C.SCIPgetConss(s.raw)
 	out := make([]*C.SCIP_CONS, 0, n)
@@ -515,7 +543,7 @@ func (s *Scip) conss() []*C.SCIP_CONS {
 }
 
 func (s *Scip) solve() error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPsolve(s.raw))
 }
 
@@ -535,7 +563,7 @@ var tpiPool struct {
 // holdsTPI reports whether this instance ran a concurrent solve, i.e. whether
 // its SCIPfree will destroy the thread pool.
 func (s *Scip) holdsTPI() bool {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPsyncstoreIsInitialized(C.SCIPgetSyncstore(s.raw)) != 0
 }
 
@@ -548,7 +576,7 @@ func tpiInit(nthreads int32) error {
 }
 
 func (s *Scip) solveConcurrent() error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	tpiPool.Lock()
 	defer tpiPool.Unlock()
 	if s.holdsTPI() {
@@ -574,7 +602,7 @@ func (s *Scip) solveConcurrent() error {
 // scipFree calls SCIPfree, giving it a thread pool to destroy if this
 // instance expects one and another instance already destroyed it.
 func (s *Scip) scipFree(raw *C.SCIP) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if !s.holdsTPI() {
 		return retcodeError(C.SCIPfree(&raw))
 	}
@@ -591,12 +619,12 @@ func (s *Scip) scipFree(raw *C.SCIP) error {
 }
 
 func (s *Scip) nSols() int {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return int(C.SCIPgetNSols(s.raw))
 }
 
 func (s *Scip) bestSol() *C.SCIP_SOL {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if s.nSols() == 0 {
 		return nil
 	}
@@ -604,7 +632,7 @@ func (s *Scip) bestSol() *C.SCIP_SOL {
 }
 
 func (s *Scip) getSols() []*C.SCIP_SOL {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	n := s.nSols()
 	if n == 0 {
 		return nil
@@ -618,34 +646,34 @@ func (s *Scip) getSols() []*C.SCIP_SOL {
 }
 
 func (s *Scip) objVal() float64 {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return float64(C.SCIPgetPrimalbound(s.raw))
 }
 
 func (s *Scip) bestBound() float64 {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return float64(C.SCIPgetDualbound(s.raw))
 }
 
 func (s *Scip) nNodes() int {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return int(C.SCIPgetNNodes(s.raw))
 }
 
 func (s *Scip) solvingTime() float64 {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return float64(C.SCIPgetSolvingTime(s.raw))
 }
 
 func (s *Scip) nLPIterations() int {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return int(C.SCIPgetNLPIterations(s.raw))
 }
 
 // ------------------------------------------------------------- variables
 
 func (s *Scip) createVar(lb, ub, obj float64, name string, varType VarType) (*C.SCIP_VAR, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	var varPtr *C.SCIP_VAR
@@ -660,7 +688,7 @@ func (s *Scip) createVar(lb, ub, obj float64, name string, varType VarType) (*C.
 }
 
 func (s *Scip) createVarSolving(lb, ub, obj float64, name string, varType VarType) (*C.SCIP_VAR, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	var varPtr *C.SCIP_VAR
@@ -680,7 +708,7 @@ func (s *Scip) createVarSolving(lb, ub, obj float64, name string, varType VarTyp
 }
 
 func (s *Scip) createPricedVar(lb, ub, obj float64, name string, varType VarType) (*C.SCIP_VAR, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	var varPtr *C.SCIP_VAR
@@ -711,7 +739,7 @@ func varFromID(scip *C.SCIP, varProbID int) *C.SCIP_VAR {
 // ------------------------------------------------------------ constraints
 
 func (s *Scip) createCons(node *Node, vars []Variable, coefs []float64, lhs, rhs float64, name string, local bool) (*C.SCIP_CONS, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if len(vars) != len(coefs) {
 		return nil, fmt.Errorf("number of variables (%d) and coefficients (%d) differ", len(vars), len(coefs))
 	}
@@ -754,7 +782,7 @@ func (s *Scip) createCons(node *Node, vars []Variable, coefs []float64, lhs, rhs
 }
 
 func (s *Scip) createConsSetPart(vars []Variable, name string) (*C.SCIP_CONS, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	var cons *C.SCIP_CONS
@@ -770,7 +798,7 @@ func (s *Scip) createConsSetPart(vars []Variable, name string) (*C.SCIP_CONS, er
 }
 
 func (s *Scip) createConsSetCover(vars []Variable, name string) (*C.SCIP_CONS, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	var cons *C.SCIP_CONS
@@ -786,7 +814,7 @@ func (s *Scip) createConsSetCover(vars []Variable, name string) (*C.SCIP_CONS, e
 }
 
 func (s *Scip) createConsSetPack(vars []Variable, name string) (*C.SCIP_CONS, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	var cons *C.SCIP_CONS
@@ -803,7 +831,7 @@ func (s *Scip) createConsSetPack(vars []Variable, name string) (*C.SCIP_CONS, er
 
 func (s *Scip) createConsQuadratic(linVars []Variable, linCoefs []float64,
 	quadVars1, quadVars2 []Variable, quadCoefs []float64, lhs, rhs float64, name string) (*C.SCIP_CONS, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if len(linVars) != len(linCoefs) {
 		return nil, fmt.Errorf("linear variables (%d) and coefficients (%d) differ", len(linVars), len(linCoefs))
 	}
@@ -824,7 +852,7 @@ func (s *Scip) createConsQuadratic(linVars []Variable, linCoefs []float64,
 
 // createConsNonlinear adds lhs <= expr + sum(linCoefs*linVars) <= rhs.
 func (s *Scip) createConsNonlinear(expr Expr, linVars []Variable, linCoefs []float64, lhs, rhs float64, name string) (*C.SCIP_CONS, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if len(linVars) != len(linCoefs) {
 		return nil, fmt.Errorf("linear variables (%d) and coefficients (%d) differ", len(linVars), len(linCoefs))
 	}
@@ -848,7 +876,7 @@ func (s *Scip) createConsNonlinear(expr Expr, linVars []Variable, linCoefs []flo
 }
 
 func (s *Scip) createConsCardinality(vars []Variable, cardinality int, name string) (*C.SCIP_CONS, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn := cString(name)
 	defer freeCString(cn)
 	var cons *C.SCIP_CONS
@@ -867,7 +895,7 @@ func (s *Scip) createConsCardinality(vars []Variable, cardinality int, name stri
 }
 
 func (s *Scip) createConsIndicator(binVar Variable, vars []Variable, coefs []float64, rhs float64, name string) (*C.SCIP_CONS, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if len(vars) != len(coefs) {
 		return nil, fmt.Errorf("variables (%d) and coefficients (%d) differ", len(vars), len(coefs))
 	}
@@ -882,7 +910,7 @@ func (s *Scip) createConsIndicator(binVar Variable, vars []Variable, coefs []flo
 }
 
 func (s *Scip) createConsSOS1(vars []Variable, weights []float64, name string) (*C.SCIP_CONS, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if len(vars) == 0 {
 		return nil, RetcodeParameterWrongVal
 	}
@@ -903,12 +931,12 @@ func (s *Scip) createConsSOS1(vars []Variable, weights []float64, name string) (
 }
 
 func (s *Scip) nodeGetNAddedConss(n Node) int {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return int(C.SCIPnodeGetNAddedConss(n.raw))
 }
 
 func (s *Scip) addConsCoef(cons Constraint, v Variable, coef float64) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	consTransformed := C.SCIPconsIsTransformed(cons.raw) == 1
 	varTransformed := C.SCIPvarIsTransformed(v.raw) == 1
 
@@ -938,44 +966,44 @@ func (s *Scip) addConsCoef(cons Constraint, v Variable, coef float64) error {
 }
 
 func (s *Scip) addConsCoefSetppc(cons Constraint, v Variable) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPaddCoefSetppc(s.raw, cons.raw, v.raw))
 }
 
 func (s *Scip) setConsModifiable(cons Constraint, modifiable bool) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPsetConsModifiable(s.raw, cons.raw, cBool(modifiable)))
 }
 
 func (s *Scip) consIsModifiable(cons Constraint) bool {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPconsIsModifiable(cons.raw) == C.TRUE
 }
 
 func (s *Scip) setConsRemovable(cons Constraint, removable bool) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPsetConsRemovable(s.raw, cons.raw, cBool(removable)))
 }
 
 func (s *Scip) consIsRemovable(cons Constraint) bool {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPconsIsRemovable(cons.raw) == C.TRUE
 }
 
 func (s *Scip) setConsSeparated(cons Constraint, separate bool) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPsetConsSeparated(s.raw, cons.raw, cBool(separate)))
 }
 
 func (s *Scip) consIsSeparated(cons Constraint) bool {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPconsIsSeparated(cons.raw) == C.TRUE
 }
 
 // ------------------------------------------------------------- solutions
 
 func (s *Scip) createSol(original bool) (*C.SCIP_SOL, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var sol *C.SCIP_SOL
 	var rc C.SCIP_RETCODE
 	if original {
@@ -993,7 +1021,7 @@ func (s *Scip) createSol(original bool) (*C.SCIP_SOL, error) {
 }
 
 func (s *Scip) createPartialSol() (*C.SCIP_SOL, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var sol *C.SCIP_SOL
 	if err := retcodeError(C.SCIPcreatePartialSol(s.raw, &sol, nil)); err != nil {
 		return nil, err
@@ -1007,7 +1035,7 @@ func (s *Scip) createPartialSol() (*C.SCIP_SOL, error) {
 // addSol adds a solution to the model, consuming it. Returns whether the
 // solution was successfully stored.
 func (s *Scip) addSol(sol *Solution) (bool, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if sol.raw == nil {
 		return false, fmt.Errorf("solution is nil")
 	}
@@ -1052,7 +1080,7 @@ func (s *Scip) addSol(sol *Solution) (bool, error) {
 // fail earlier (e.g. a panicking constraint handler during the check) raw is
 // still ours, so free it rather than leak it.
 func (s *Scip) feasibleOr(rc C.SCIP_RETCODE, raw *C.SCIP_SOL, feasible C.uint) (bool, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := retcodeError(rc); err != nil {
 		if raw != nil {
 			C.SCIPfreeSol(s.raw, &raw)
@@ -1065,12 +1093,12 @@ func (s *Scip) feasibleOr(rc C.SCIP_RETCODE, raw *C.SCIP_SOL, feasible C.uint) (
 // ------------------------------------------------------------- LP / rows
 
 func (s *Scip) isLPConstructed() bool {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPisLPConstructed(s.raw) != 0
 }
 
 func (s *Scip) constructLP() (bool, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var cutoff C.uint
 	if err := retcodeError(C.SCIPconstructLP(s.raw, &cutoff)); err != nil {
 		return false, err
@@ -1079,17 +1107,17 @@ func (s *Scip) constructLP() (bool, error) {
 }
 
 func (s *Scip) lpStatus() LPStatus {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return lpStatusFromC(C.SCIPgetLPSolstat(s.raw))
 }
 
 func (s *Scip) lpObjVal() float64 {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return float64(C.SCIPgetLPObjval(s.raw))
 }
 
 func (s *Scip) createEmptyRow(rb *RowBuilder) (*C.SCIP_ROW, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	name := "r"
 	if rb.name != nil {
 		name = *rb.name
@@ -1124,7 +1152,7 @@ func (s *Scip) createEmptyRow(rb *RowBuilder) (*C.SCIP_ROW, error) {
 }
 
 func (s *Scip) addRow(row Row, forceCut bool) (bool, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var infeasible C.uint
 	if err := retcodeError(C.SCIPaddRow(s.raw, row.raw, cBool(forceCut), &infeasible)); err != nil {
 		return false, err
@@ -1133,7 +1161,7 @@ func (s *Scip) addRow(row Row, forceCut bool) (bool, error) {
 }
 
 func (s *Scip) freeTransform() error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	err := retcodeError(C.SCIPfreeTransform(s.raw))
 	if err == nil {
 		s.root().transGen++ // every transformed handle is now dead
@@ -1144,12 +1172,12 @@ func (s *Scip) freeTransform() error {
 // ------------------------------------------------------------- tree nodes
 
 func (s *Scip) focusNode() *C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPgetFocusNode(s.raw)
 }
 
 func (s *Scip) createChild() (*C.SCIP_NODE, error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var nodePtr *C.SCIP_NODE
 	if err := retcodeError(C.SCIPcreateChild(s.raw, &nodePtr, 0, C.SCIPgetLocalTransEstimate(s.raw))); err != nil {
 		return nil, err
@@ -1158,36 +1186,36 @@ func (s *Scip) createChild() (*C.SCIP_NODE, error) {
 }
 
 func (s *Scip) bestNode() *C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPgetBestNode(s.raw)
 }
 func (s *Scip) bestBoundNode() *C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPgetBestboundNode(s.raw)
 }
 func (s *Scip) bestLeaf() *C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPgetBestLeaf(s.raw)
 }
 func (s *Scip) bestChild() *C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPgetBestChild(s.raw)
 }
 func (s *Scip) bestSibling() *C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPgetBestSibling(s.raw)
 }
 func (s *Scip) prioChild() *C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPgetPrioChild(s.raw)
 }
 func (s *Scip) prioSibling() *C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return C.SCIPgetPrioSibling(s.raw)
 }
 
 func (s *Scip) nodeSlice(nodesPtr **C.SCIP_NODE, n C.int) []*C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if n <= 0 {
 		return nil
 	}
@@ -1199,7 +1227,7 @@ func (s *Scip) nodeSlice(nodesPtr **C.SCIP_NODE, n C.int) []*C.SCIP_NODE {
 }
 
 func (s *Scip) leaves() []*C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var nodesPtr **C.SCIP_NODE
 	var n C.int
 	mustOK(C.SCIPgetLeaves(s.raw, &nodesPtr, &n))
@@ -1207,7 +1235,7 @@ func (s *Scip) leaves() []*C.SCIP_NODE {
 }
 
 func (s *Scip) children() []*C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var nodesPtr **C.SCIP_NODE
 	var n C.int
 	mustOK(C.SCIPgetChildren(s.raw, &nodesPtr, &n))
@@ -1215,7 +1243,7 @@ func (s *Scip) children() []*C.SCIP_NODE {
 }
 
 func (s *Scip) siblings() []*C.SCIP_NODE {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var nodesPtr **C.SCIP_NODE
 	var n C.int
 	mustOK(C.SCIPgetSiblings(s.raw, &nodesPtr, &n))
@@ -1263,7 +1291,7 @@ func mustBranchVarVal(scip *C.SCIP, varProbID int, val float64) {
 // ------------------------------------------------------------- plugins
 
 func (s *Scip) includeBranchRule(name, desc string, priority, maxdepth int32, maxbounddist float64, rule BranchRule) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn, cd := cString(name), cString(desc)
 	defer func() { freeCString(cn); freeCString(cd) }()
 	data := plugins.put(rule, s.raw)
@@ -1272,7 +1300,7 @@ func (s *Scip) includeBranchRule(name, desc string, priority, maxdepth int32, ma
 }
 
 func (s *Scip) includeEventhdlr(name, desc string, eventhdlr Eventhdlr) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn, cd := cString(name), cString(desc)
 	defer func() { freeCString(cn); freeCString(cd) }()
 	data := plugins.put(eventhdlr, s.raw)
@@ -1280,7 +1308,7 @@ func (s *Scip) includeEventhdlr(name, desc string, eventhdlr Eventhdlr) error {
 }
 
 func (s *Scip) includeNodesel(name, desc string, stdPriority, memSavePriority int32, nodesel NodeSel) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn, cd := cString(name), cString(desc)
 	defer func() { freeCString(cn); freeCString(cd) }()
 	data := plugins.put(nodesel, s.raw)
@@ -1289,7 +1317,7 @@ func (s *Scip) includeNodesel(name, desc string, stdPriority, memSavePriority in
 }
 
 func (s *Scip) includePricer(name, desc string, priority int32, delay bool, pricer Pricer) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn, cd := cString(name), cString(desc)
 	defer func() { freeCString(cn); freeCString(cd) }()
 	data := plugins.put(pricer, s.raw)
@@ -1297,7 +1325,7 @@ func (s *Scip) includePricer(name, desc string, priority int32, delay bool, pric
 }
 
 func (s *Scip) includeHeur(name, desc string, priority int32, dispchar byte, freq, freqofs, maxdepth int32, timing HeurTiming, usessubscip bool, heur Heuristic) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn, cd := cString(name), cString(desc)
 	defer func() { freeCString(cn); freeCString(cd) }()
 	data := plugins.put(heur, s.raw)
@@ -1307,7 +1335,7 @@ func (s *Scip) includeHeur(name, desc string, priority int32, dispchar byte, fre
 }
 
 func (s *Scip) includeSeparator(name, desc string, priority, freq int32, maxbounddist float64, usesubscip, delay bool, sep Separator) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn, cd := cString(name), cString(desc)
 	defer func() { freeCString(cn); freeCString(cd) }()
 	data := plugins.put(sep, s.raw)
@@ -1330,7 +1358,7 @@ type conshdlrOpts struct {
 var defaultConshdlrOpts = conshdlrOpts{sepaFreq: 1, propFreq: 1, propTiming: C.SCIP_PROPTIMING_BEFORELP}
 
 func (s *Scip) includeConshdlr(name, desc string, enfopriority, checkpriority int32, o conshdlrOpts, conshdlr Conshdlr) error {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn, cd := cString(name), cString(desc)
 	defer func() { freeCString(cn); freeCString(cd) }()
 	data := plugins.put(conshdlr, s.raw)
@@ -1346,7 +1374,7 @@ func (s *Scip) includeConshdlr(name, desc string, enfopriority, checkpriority in
 // copyPluginsTo copies every plugin of s into target (what SCIP does when it
 // creates a sub-SCIP). valid reports whether all constraint handlers copied.
 func (s *Scip) copyPluginsTo(target *Scip) (valid bool, err error) {
-	defer runtime.KeepAlive(s) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var v C.uint
 	err = retcodeError(C.scipgo_copyPlugins(s.raw, target.raw, &v))
 	return v != 0, err

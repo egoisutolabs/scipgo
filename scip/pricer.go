@@ -61,35 +61,35 @@ func (p PricerPlugin) Inner() *C.SCIP_PRICER { return p.raw }
 
 // Name returns the name of the pricer.
 func (p PricerPlugin) Name() string {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	p.live("PricerPlugin.Name")
 	return goString(C.SCIPpricerGetName(p.raw))
 }
 
 // Desc returns the description of the pricer.
 func (p PricerPlugin) Desc() string {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	p.live("PricerPlugin.Desc")
 	return goString(C.SCIPpricerGetDesc(p.raw))
 }
 
 // Priority returns the priority of the pricer.
 func (p PricerPlugin) Priority() int32 {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	p.live("PricerPlugin.Priority")
 	return int32(C.SCIPpricerGetPriority(p.raw))
 }
 
 // IsDelayed returns the delay setting of the pricer.
 func (p PricerPlugin) IsDelayed() bool {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	p.live("PricerPlugin.IsDelayed")
 	return C.SCIPpricerIsDelayed(p.raw) != 0
 }
 
 // IsActive returns whether the pricer is active.
 func (p PricerPlugin) IsActive() bool {
-	defer runtime.KeepAlive(p.scip) // the C call must outlive the last Go use of the wrapper
+	defer runtime.KeepAlive(p.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	p.live("PricerPlugin.IsActive")
 	return C.SCIPpricerIsActive(p.raw) != 0
 }
