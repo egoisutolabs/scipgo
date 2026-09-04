@@ -57,6 +57,9 @@ func (m Model) TryAddVar(lb, ub, obj float64, name string, varType VarType) (Var
 	if err := m.guard("AddVar"); err != nil {
 		return Variable{}, err
 	}
+	if !validVarType(varType) {
+		return Variable{}, m.invalid("AddVar", RetcodeInvalidData, "unknown VarType")
+	}
 	var varPtr *C.SCIP_VAR
 	var err error
 	if m.scip.stage() == StageSolving {
@@ -81,6 +84,9 @@ func (m Model) AddVar(lb, ub, obj float64, name string, varType VarType) Variabl
 func (m Model) TryAddPricedVar(lb, ub, obj float64, name string, varType VarType) (Variable, error) {
 	if err := m.guard("AddPricedVar"); err != nil {
 		return Variable{}, err
+	}
+	if !validVarType(varType) {
+		return Variable{}, m.invalid("AddPricedVar", RetcodeInvalidData, "unknown VarType")
 	}
 	varPtr, err := m.scip.createPricedVar(lb, ub, obj, name, varType)
 	if err != nil {
@@ -141,6 +147,13 @@ func (m Model) AddConsLocal(cons ConsBuilder) Constraint {
 // TryAddConsNode locally adds a constraint (built with NewCons) to the given
 // node and its children.
 func (m Model) TryAddConsNode(node *Node, cons ConsBuilder) (Constraint, error) {
+	if err := m.guard("AddConsNode"); err != nil {
+		return Constraint{}, err
+	}
+	// A nil node would silently mean "the focus node" inside createCons.
+	if err := m.checkNode("AddConsNode", node); err != nil {
+		return Constraint{}, err
+	}
 	return m.addLocalCons("AddConsNode", node, cons)
 }
 
@@ -158,9 +171,6 @@ func (m Model) addLocalCons(op string, node *Node, cons ConsBuilder) (Constraint
 	}
 	if cons.expr != nil {
 		return Constraint{}, m.invalid(op, RetcodeInvalidCall, "nonlinear constraints cannot be added locally")
-	}
-	if node != nil && node.raw == nil {
-		return Constraint{}, m.invalid(op, RetcodeInvalidData, "zero node")
 	}
 	if err := m.checkVars(op, cons.vars()...); err != nil {
 		return Constraint{}, err

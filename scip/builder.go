@@ -424,6 +424,18 @@ func (b RowBuilder) TryAddTo(m Model) (Row, error) {
 	if err := m.guard("AddRow"); err != nil {
 		return Row{}, err
 	}
+	if src := b.source; src != nil {
+		switch {
+		case src.separator != nil && src.separator.raw == nil:
+			return Row{}, m.invalid("AddRow", RetcodeInvalidData, "zero SeparatorPlugin as row source")
+		case src.constraintHandler != nil && src.constraintHandler.raw == nil:
+			return Row{}, m.invalid("AddRow", RetcodeInvalidData, "zero ConshdlrPlugin as row source")
+		case src.constraint != nil:
+			if err := m.checkCons("AddRow", *src.constraint); err != nil {
+				return Row{}, err
+			}
+		}
+	}
 	rowPtr, err := m.scip.createEmptyRow(&b)
 	if err != nil {
 		return Row{}, m.wrap("AddRow", err, strOrEmpty(b.name))

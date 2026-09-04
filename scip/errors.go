@@ -145,24 +145,49 @@ func (m Model) requireStage(op string, allowed ...Stage) error {
 	return &Error{Op: op, Stage: st, Retcode: RetcodeInvalidCall, Detail: "not permitted in this stage"}
 }
 
-// checkVars rejects zero Variables, which a failed lookup such as Model.Var
-// returns; SCIP would dereference the nil pointer.
+// checkHandle rejects a handle SCIP must not see: the zero value a failed
+// lookup returns, one whose model has been freed, or one that belongs to a
+// different model (its raw pointer would be passed into the wrong instance).
+// Handles created inside callbacks carry a weak *Scip, so ownership is
+// compared by raw instance, not by wrapper identity.
+func (m Model) checkHandle(op, what string, raw bool, owner *Scip) error {
+	switch {
+	case !raw:
+		return m.invalid(op, RetcodeInvalidData, "zero "+what)
+	case owner == nil || owner.raw == nil:
+		return m.invalid(op, RetcodeInvalidData, what+" belongs to a freed model")
+	case owner.raw != m.scip.raw:
+		return m.invalid(op, RetcodeInvalidData, what+" belongs to another model")
+	}
+	return nil
+}
+
+// checkVars validates every Variable; see checkHandle.
 func (m Model) checkVars(op string, vars ...Variable) error {
 	for _, v := range vars {
-		if v.raw == nil {
-			return m.invalid(op, RetcodeInvalidData, "zero Variable")
+		if err := m.checkHandle(op, "Variable", v.raw != nil, v.scip); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// checkCons rejects a zero Constraint.
+// checkCons validates a Constraint; see checkHandle.
 func (m Model) checkCons(op string, c Constraint) error {
-	if c.raw == nil {
-		return m.invalid(op, RetcodeInvalidData, "zero Constraint")
-	}
-	return nil
+	return m.checkHandle(op, "Constraint", c.raw != nil, c.scip)
 }
+
+// checkNode validates a *Node; see checkHandle.
+func (m Model) checkNode(op string, n *Node) error {
+	if n == nil {
+		return m.invalid(op, RetcodeInvalidData, "nil Node")
+	}
+	return m.checkHandle(op, "Node", n.raw != nil, n.scip)
+}
+
+// validVarType reports whether t is one of the declared VarType constants;
+// VarType.toC maps anything else to implicit integer, silently.
+func validVarType(t VarType) bool { return t >= VarTypeContinuous && t <= VarTypeImplInt }
 
 // invalid builds an *Error for an argument the binding rejects itself.
 func (m Model) invalid(op string, rc Retcode, detail string) error {

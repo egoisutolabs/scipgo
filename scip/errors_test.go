@@ -325,3 +325,56 @@ func TestDiverEndOutsideSolving(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestForeignAndDanglingHandlesRejected(t *testing.T) {
+	a := createTestModel(t)
+	b := createTestModel(t)
+	defer b.Free()
+	xa := a.Vars()[0]
+	ca := a.Conss()[0]
+	sa := a.CreateOrigSol()
+	if _, err := b.TryAddCons([]Variable{xa}, []float64{1}, 0, 1, "f"); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("foreign var: %v", err)
+	}
+	if err := b.TrySetConsModifiable(ca, true); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("foreign cons: %v", err)
+	}
+	if err := b.AddSol(&sa); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("foreign sol: %v", err)
+	}
+	a.Free()
+	_, err := b.TryAddCons([]Variable{xa}, []float64{1}, 0, 1, "d")
+	if e := asError(t, err); e.Detail != "Variable belongs to a freed model" {
+		t.Fatalf("dangling var: %+v", e)
+	}
+}
+
+func TestEnumAndArgumentValidation(t *testing.T) {
+	m := createTestModel(t)
+	defer m.Free()
+	if _, err := m.TrySetObjSense(ObjSense(7)); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("obj sense: %v", err)
+	}
+	if _, err := m.TryAddVar(0, 1, 1, "t", VarType(9)); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("var type: %v", err)
+	}
+	if _, err := m.TryAddPricedVar(0, 1, 1, "t", VarType(-1)); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("priced var type: %v", err)
+	}
+	x := m.Vars()[0]
+	if _, err := m.TryAddConsNode(nil, NewCons().Coef(x, 1).Le(1)); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("nil node cons: %v", err)
+	}
+	if err := (&Prober{scip: m.scip}).TryBacktrack(-1); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("negative depth: %v", err)
+	}
+	if err := m.TryIncludeBranchRule("n", "", 1, -1, 1, nil); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("nil rule: %v", err)
+	}
+	if err := m.TryAdd(NewHeur(nil)); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("nil heur: %v", err)
+	}
+	if _, err := NewRow().Source(SourceSepa(SeparatorPlugin{})).TryAddTo(m); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("zero row source: %v", err)
+	}
+}

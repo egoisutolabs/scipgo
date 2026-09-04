@@ -441,8 +441,7 @@ func (s *Scip) solveConcurrent() error {
 // instance expects one and another instance already destroyed it.
 func (s *Scip) scipFree(raw *C.SCIP) error {
 	if !s.holdsTPI() {
-		C.SCIPfree(&raw)
-		return nil
+		return retcodeError(C.SCIPfree(&raw))
 	}
 	tpiPool.Lock()
 	defer tpiPool.Unlock()
@@ -451,9 +450,9 @@ func (s *Scip) scipFree(raw *C.SCIP) error {
 			return err // SCIPfree would crash in SCIPtpiExit; leaking beats crashing
 		}
 	}
-	C.SCIPfree(&raw)
+	rc := C.SCIPfree(&raw)
 	tpiPool.live = false
-	return nil
+	return retcodeError(rc)
 }
 
 func (s *Scip) nSols() int { return int(C.SCIPgetNSols(s.raw)) }

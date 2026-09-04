@@ -128,6 +128,9 @@ func (m Model) TrySetObjSense(sense ObjSense) (Model, error) {
 	if err := m.guard("SetObjSense"); err != nil {
 		return m, err
 	}
+	if sense != ObjSenseMinimize && sense != ObjSenseMaximize {
+		return m, m.invalid("SetObjSense", RetcodeInvalidData, "unknown objective sense")
+	}
 	return m, m.wrap("SetObjSense", m.scip.setObjSense(sense), "")
 }
 
@@ -399,6 +402,9 @@ func (m Model) TryIncludeBranchRule(name, desc string, priority, maxdepth int32,
 	if err := m.guard("IncludeBranchRule"); err != nil {
 		return err
 	}
+	if rule == nil {
+		return m.invalid("IncludeBranchRule", RetcodeInvalidData, "nil plugin")
+	}
 	return m.wrap("IncludeBranchRule", m.scip.includeBranchRule(name, desc, priority, maxdepth, maxbounddist, rule), name)
 }
 
@@ -413,6 +419,9 @@ func (m Model) TryIncludeNodesel(name, desc string, stdPriority, memSavePriority
 	if err := m.guard("IncludeNodesel"); err != nil {
 		return err
 	}
+	if nodesel == nil {
+		return m.invalid("IncludeNodesel", RetcodeInvalidData, "nil plugin")
+	}
 	return m.wrap("IncludeNodesel", m.scip.includeNodesel(name, desc, stdPriority, memSavePriority, nodesel), name)
 }
 
@@ -425,6 +434,9 @@ func (m Model) IncludeNodesel(name, desc string, stdPriority, memSavePriority in
 func (m Model) TryIncludeHeur(name, desc string, priority int32, dispchar byte, freq, freqofs, maxdepth int32, timing HeurTiming, usessubscip bool, heur Heuristic) error {
 	if err := m.guard("IncludeHeur"); err != nil {
 		return err
+	}
+	if heur == nil {
+		return m.invalid("IncludeHeur", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeHeur", m.scip.includeHeur(name, desc, priority, dispchar, freq, freqofs, maxdepth, timing, usessubscip, heur), name)
 }
@@ -439,6 +451,9 @@ func (m Model) TryIncludeSeparator(name, desc string, priority, freq int32, maxb
 	if err := m.guard("IncludeSeparator"); err != nil {
 		return err
 	}
+	if sep == nil {
+		return m.invalid("IncludeSeparator", RetcodeInvalidData, "nil plugin")
+	}
 	return m.wrap("IncludeSeparator", m.scip.includeSeparator(name, desc, priority, freq, maxbounddist, usesubscip, delay, sep), name)
 }
 
@@ -452,6 +467,9 @@ func (m Model) TryIncludeEventhdlr(name, desc string, eventhdlr Eventhdlr) error
 	if err := m.guard("IncludeEventhdlr"); err != nil {
 		return err
 	}
+	if eventhdlr == nil {
+		return m.invalid("IncludeEventhdlr", RetcodeInvalidData, "nil plugin")
+	}
 	return m.wrap("IncludeEventhdlr", m.scip.includeEventhdlr(name, desc, eventhdlr), name)
 }
 
@@ -464,6 +482,9 @@ func (m Model) IncludeEventhdlr(name, desc string, eventhdlr Eventhdlr) {
 func (m Model) TryIncludePricer(name, desc string, priority int32, delay bool, pricer Pricer) error {
 	if err := m.guard("IncludePricer"); err != nil {
 		return err
+	}
+	if pricer == nil {
+		return m.invalid("IncludePricer", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludePricer", m.scip.includePricer(name, desc, priority, delay, pricer), name)
 }
@@ -481,6 +502,9 @@ func (m Model) IncludePricer(name, desc string, priority int32, delay bool, pric
 func (m Model) TryIncludeConshdlr(name, desc string, enfopriority, checkpriority int32, conshdlr Conshdlr) error {
 	if err := m.guard("IncludeConshdlr"); err != nil {
 		return err
+	}
+	if conshdlr == nil {
+		return m.invalid("IncludeConshdlr", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeConshdlr", m.scip.includeConshdlr(name, desc, enfopriority, checkpriority, defaultConshdlrOpts, conshdlr), name)
 }

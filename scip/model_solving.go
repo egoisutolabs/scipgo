@@ -78,6 +78,9 @@ func (m Model) AddSol(sol *Solution) error {
 	if sol == nil || sol.raw == nil {
 		return m.invalid("AddSol", RetcodeInvalidData, "nil or consumed solution")
 	}
+	if err := m.checkHandle("AddSol", "Solution", true, sol.scip); err != nil {
+		return err
+	}
 	stored, err := m.scip.addSol(sol)
 	if cp := callbackError(m.scip.raw); cp != nil {
 		return cp
@@ -262,8 +265,8 @@ func (m Model) TryAddCut(cut Row, forceCut bool) (bool, error) {
 	if err := m.guard("AddCut"); err != nil {
 		return false, err
 	}
-	if cut.raw == nil {
-		return false, m.invalid("AddCut", RetcodeInvalidData, "zero Row")
+	if err := m.checkHandle("AddCut", "Row", cut.raw != nil, cut.scip); err != nil {
+		return false, err
 	}
 	infeasible, err := m.scip.addRow(cut, forceCut)
 	return infeasible, m.wrap("AddCut", err, cut.Name())
@@ -342,8 +345,8 @@ func (m Model) TrySetUbNode(node *Node, v Variable, ub float64) error {
 	if err := m.guard("SetUbNode"); err != nil {
 		return err
 	}
-	if node == nil || node.raw == nil {
-		return m.invalid("SetUbNode", RetcodeInvalidData, "nil or zero node")
+	if err := m.checkNode("SetUbNode", node); err != nil {
+		return err
 	}
 	if err := m.checkVars("SetUbNode", v); err != nil {
 		return err
@@ -360,8 +363,8 @@ func (m Model) TrySetLbNode(node *Node, v Variable, lb float64) error {
 	if err := m.guard("SetLbNode"); err != nil {
 		return err
 	}
-	if node == nil || node.raw == nil {
-		return m.invalid("SetLbNode", RetcodeInvalidData, "nil or zero node")
+	if err := m.checkNode("SetLbNode", node); err != nil {
+		return err
 	}
 	if err := m.checkVars("SetLbNode", v); err != nil {
 		return err

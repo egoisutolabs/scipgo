@@ -47,6 +47,9 @@ func (p *Prober) active(op string) error {
 
 func (p *Prober) TryBacktrack(depth int) error {
 	m := Model{scip: p.scip}
+	if depth < 0 {
+		return m.invalid("Prober.Backtrack", RetcodeInvalidData, "negative depth")
+	}
 	if err := p.active("Prober.Backtrack"); err != nil {
 		return err
 	}
