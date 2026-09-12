@@ -5,9 +5,11 @@ package scip
 */
 import "C"
 
-import "runtime"
-
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"runtime"
+)
 
 // Infinity is SCIP's notion of positive infinity.
 const Infinity = 1e+20
@@ -243,6 +245,84 @@ func (m Model) SolveConcurrent() Model {
 	m, err := m.TrySolveConcurrent()
 	must(err)
 	return m
+}
+
+// ------------------------------------------------------------- interruption
+
+// Interrupt asks SCIP to stop the solve currently in progress at the next
+// opportunity. The request is noticed between nodes, LP iterations and
+// pricing rounds; a single long operation — a big root LP, a slow plugin
+// callback — delays the stop until it returns. Unlike every other Model
+// method, Interrupt is safe to call from another goroutine while the solve
+// runs; that is its purpose. It is a no-op when no solve is running, on a
+// freed or zero Model, and a request left over from before a solve is
+// discarded when the next one starts.
+//
+// A stopped solve returns normally with status StatusUserInterrupt and the
+// model stays usable: the incumbent, if any, remains available and a new
+// solve can be started. Calling Interrupt from inside a plugin callback is
+// legal and stops the solve the callback is part of once it returns.
+func (m Model) Interrupt() {
+	if m.scip != nil {
+		m.scip.interrupt()
+	}
+}
+
+// SolveContext solves the model like TrySolve, stopping early when ctx is
+// done. A context that is already cancelled or expired prevents SCIPsolve
+// from being called at all. When the context stops the solve, the returned
+// Model is the interrupted one — status StatusUserInterrupt, incumbent (if
+// any) still available, usable after FreeTransform — and the error is an
+// *Error with Op "SolveContext" wrapping the context error, so both
+// errors.Is(err, context.DeadlineExceeded) and errors.Is(err, context.Canceled)
+// work. The stop has the granularity described on Interrupt; if SCIP finishes
+// before the request is noticed, the completed result is returned with a nil
+// error. A panic inside a plugin callback is reported as for TrySolve.
+func (m Model) SolveContext(ctx context.Context) (Model, error) {
+	return m.solveContext(ctx, "SolveContext", m.TrySolve)
+}
+
+// SolveConcurrentContext is SolveContext for the concurrent solvers of
+// SolveConcurrent; see both. Interruption relies on an event handler the
+// binding includes automatically, so a model built without
+// IncludeDefaultPlugins whose first solve is a concurrent one started from a
+// stage past the problem stage cannot be stopped before it completes.
+func (m Model) SolveConcurrentContext(ctx context.Context) (Model, error) {
+	return m.solveContext(ctx, "SolveConcurrentContext", m.TrySolveConcurrent)
+}
+
+// solveContext is the shared shape of the context-aware solves: watch ctx,
+// interrupt on cancellation, then attribute a UserInterrupt to the context
+// only when the interrupt actually landed.
+func (m Model) solveContext(ctx context.Context, op string, solve func() (Model, error)) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.guard(op); err != nil {
+		return m, err
+	}
+	if err := ctx.Err(); err != nil {
+		return m, m.cancelled(op, "context done before solve started", err)
+	}
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(done)
+		m.Interrupt()
+	})
+	solved, err := solve()
+	if !stop() {
+		// The function fired. Wait for it to return so its interrupt cannot
+		// land on the next solve, which resets the flags on entry.
+		<-done
+		if err == nil && solved.scip.status() == StatusUserInterrupt {
+			return solved, solved.cancelled(op, "solve interrupted by context cancellation", ctx.Err())
+		}
+	}
+	return solved, err
+}
+
+// cancelled builds the *Error a cancelled solve reports.
+func (m Model) cancelled(op, detail string, cause error) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	return &Error{Op: op, Stage: m.scip.stage(), Retcode: RetcodeError, Detail: detail, Cause: cause}
 }
 
 // TryFree releases the SCIP instance now instead of when the garbage

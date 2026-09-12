@@ -115,6 +115,37 @@ presolved or solving, as SCIP defines it; read values after a solve from
 `BestSol`. `Redcost` on a variable or column reports unavailable unless the
 current node's LP is solved.
 
+## Stopping a solve
+
+`Interrupt` asks a running solve to stop at the next opportunity and is the
+one `Model` method safe to call from another goroutine; `SolveContext` and
+`SolveConcurrentContext` do the same from a `context.Context`:
+
+```go
+ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+defer cancel()
+solved, err := model.SolveContext(ctx)
+if errors.Is(err, context.DeadlineExceeded) {
+    // stopped at the deadline: status StatusUserInterrupt,
+    // the incumbent (if any) is still available
+    if sol, ok := solved.BestSol(); ok { report(sol) }
+}
+```
+
+The error is an `*scip.Error` wrapping the context error, so
+`errors.Is(err, context.DeadlineExceeded)` works. An already-done context
+prevents `SCIPsolve` from being called at all. A stop is noticed between
+nodes, LP iterations and pricing rounds — a single long operation such as a
+big root LP or a slow plugin callback delays it until that operation returns,
+and a plugin that wants finer granularity can check its own context between
+callbacks. A stopped solve leaves the model usable: `BestSol` returns the
+incumbent if one was found, and `FreeTransform` plus a new solve work.
+
+Concurrent solves are stopped through an event handler the binding includes
+automatically; a model built without `IncludeDefaultPlugins` whose first
+solve is a `SolveConcurrent` started from a stage past the problem stage
+cannot be stopped before it completes.
+
 ## Nonlinear constraints
 
 Build an expression tree from variables and constants and add it as a

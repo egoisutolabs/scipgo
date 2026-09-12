@@ -35,6 +35,14 @@ type Scip struct {
 	// handle, original ones included.
 	transGen uint64
 	probGen  uint64
+	// stopFlag is the Go-side half of Interrupt: set by a caller that wants
+	// the solve stopped, relayed to concurrent workers and sub-SCIPs by the
+	// interruptForwarder event handler (below). Like SCIP's own
+	// user-interrupt flag it is cleared when the next solve starts.
+	stopFlag atomic.Bool
+	// fwdIncluded records that interruptForwarder has been included, so it
+	// is added at most once per instance.
+	fwdIncluded bool
 	// Variables added during solving, to be released after solving.
 	varsAddedInSolving []*C.SCIP_VAR
 	mu                 sync.Mutex
@@ -455,7 +463,13 @@ func (s *Scip) write(path, ext string, symb bool) error {
 
 func (s *Scip) includeDefaultPlugins() error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	return retcodeError(C.SCIPincludeDefaultPlugins(s.raw))
+	if err := retcodeError(C.SCIPincludeDefaultPlugins(s.raw)); err != nil {
+		return err
+	}
+	// Included here so every conventionally built model can be interrupted
+	// in every stage, including a concurrent solve re-started from a stage
+	// where plugins can no longer be added.
+	return s.includeInterruptForwarder()
 }
 
 // statisticsJSON returns the solving statistics in JSON format
@@ -533,7 +547,93 @@ func (s *Scip) conss() []*C.SCIP_CONS {
 
 func (s *Scip) solve() error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	s.clearInterrupt()                // a leftover Interrupt from before this solve must not stop it
 	return retcodeError(C.SCIPsolve(s.raw))
+}
+
+// clearInterrupt discards a leftover stop request, mirroring the reset SCIP's
+// SCIPsolve does to its own user-interrupt flag.
+func (s *Scip) clearInterrupt() {
+	if r := s.root(); r != nil {
+		r.stopFlag.Store(false)
+	}
+}
+
+// interrupt asks SCIP to stop the solve in progress on s's root at the next
+// opportunity: between nodes, LP iterations and pricing rounds, but only once
+// the currently running plugin callback has returned. It may be called from
+// any goroutine and is a no-op if the instance is gone. A stop request left
+// over from before a solve is discarded when the next solve starts.
+func (s *Scip) interrupt() {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	r := s.root()
+	if r == nil || r.raw == nil || r.freed.Load() {
+		return
+	}
+	r.stopFlag.Store(true)
+	// SCIPinterruptSolve is refused outside PROBLEM..FREETRANS and SCIP
+	// prints an error when its stage check fails, so look first. The read
+	// races a concurrently running solve only by observing a stage from the
+	// same range (or INIT, when nothing is solving); the flag SCIPsolve
+	// resets at its start makes a stale call harmless either way.
+	if st := Stage(int(C.SCIPgetStage(r.raw))); st >= StageProblem && st <= StageFreeTrans {
+		C.SCIPinterruptSolve(r.raw)
+	}
+}
+
+// interruptForwarderName is the SCIP name of the forwarder event handler.
+const interruptForwarderName = "scipgo_interrupt"
+
+// interruptForwarder relays a stop request into the SCIP instance a callback
+// runs in. A sequential solve is stopped by SCIPinterruptSolve on the main
+// instance directly, but the workers of a concurrent solve (and the sub-SCIPs
+// of LNS heuristics) are separate SCIP instances that never see the main
+// instance's flag, and the syncstore flag meant to stop them cannot be
+// written from a Go thread while SCIP's OpenMP thread pool is busy: its lock
+// deadlocks for threads the runtime did not create. A Copyable event handler
+// copied into every worker sidesteps both: it runs on a solver thread, where
+// interrupting the instance it executes in is always legal, and NODEFOCUSED
+// fires once per node, giving the same per-node granularity as SCIP's own
+// checks.
+type interruptForwarder struct{}
+
+func (interruptForwarder) GetEventMask() EventMask { return EventMaskNodeFocused }
+
+func (interruptForwarder) Execute(model Model, h EventhdlrPlugin, event Event) {
+	defer runtime.KeepAlive(model.scip.root()) // pin the owner for the flag read
+	s := model.scip
+	r := s.root()
+	if r == nil || !r.stopFlag.Load() {
+		return
+	}
+	// s.raw is the instance this callback executes in — the main instance
+	// for a sequential solve, one worker or sub-SCIP copy otherwise — and
+	// cannot be freed before the callback returns, so unlike the owner it
+	// needs no pinning.
+	C.SCIPinterruptSolve(s.raw)
+}
+
+// Copyable; see interruptForwarder.
+func (interruptForwarder) Copy() any { return interruptForwarder{} }
+
+// includeInterruptForwarder adds the forwarder once, if the stage still
+// permits including plugins.
+func (s *Scip) includeInterruptForwarder() error {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if s.fwdIncluded {
+		return nil
+	}
+	// SCIPincludeEventhdlr is legal in Init and Problem only; a solve
+	// started from a later stage keeps whatever forwarder was included
+	// before, if any.
+	if st := Stage(int(C.SCIPgetStage(s.raw))); st > StageProblem {
+		return nil
+	}
+	if err := s.includeEventhdlr(interruptForwarderName, "relays scip.Interrupt into concurrent workers", interruptForwarder{}); err != nil {
+		return err
+	}
+	s.fwdIncluded = true
+	return nil
 }
 
 // SCIP's task processing interface is one process-wide thread pool: an
@@ -566,6 +666,14 @@ func tpiInit(nthreads int32) error {
 
 func (s *Scip) solveConcurrent() error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	// The workers are separate SCIP instances; without the forwarder a
+	// concurrent solve could not be stopped before it runs to completion.
+	if r := s.root(); r != nil {
+		if err := r.includeInterruptForwarder(); err != nil {
+			return err
+		}
+	}
+	s.clearInterrupt() // a leftover Interrupt from before this solve must not stop it
 	tpiPool.Lock()
 	defer tpiPool.Unlock()
 	if s.holdsTPI() {
