@@ -211,9 +211,14 @@ func (m Model) TrySolve() (Model, error) {
 }
 
 // solveCore is the solve call without interrupt-state handling, which the
-// context-aware solves arrange themselves before their watcher exists.
+// context-aware solves arrange themselves before their watcher exists. It
+// also tries to include the interrupt forwarder, so the Go-side stop flag
+// has a consumer even on a model built without IncludeDefaultPlugins.
 func (m Model) solveCore(op string) (Model, error) {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.scip.includeInterruptForwarder(); err != nil {
+		return m, m.wrap(op, err, "")
+	}
 	err := m.scip.solve()
 	if cp := callbackError(m.scip.raw); cp != nil {
 		return m, cp
@@ -239,14 +244,23 @@ func (m Model) TrySolveConcurrent() (Model, error) {
 		return m, err
 	}
 	m.scip.clearInterrupt() // a leftover Interrupt from before this solve must not stop it
-	return m.solveConcurrentCore("SolveConcurrent")
+	return m.solveConcurrentCore("SolveConcurrent", nil)
 }
 
 // solveConcurrentCore is the concurrent solve call without interrupt-state
-// handling; see solveCore.
-func (m Model) solveConcurrentCore(op string) (Model, error) {
+// handling; see solveCore. ctx, when non-nil, lets the wait for another
+// model's concurrent solve to release SCIP's process-wide thread pool be
+// abandoned when it is done, so a deadline is honored even while queued.
+func (m Model) solveConcurrentCore(op string, ctx context.Context) (Model, error) {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	err := m.scip.solveConcurrent()
+	var wait <-chan struct{}
+	if ctx != nil {
+		wait = ctx.Done()
+	}
+	abandoned, err := m.scip.solveConcurrent(wait)
+	if abandoned {
+		return m, m.cancelled(op, "context done while waiting for another concurrent solve to release SCIP's thread pool", ctx.Err())
+	}
 	if cp := callbackError(m.scip.raw); cp != nil {
 		return m, cp
 	}
@@ -301,13 +315,16 @@ func (m Model) SolveContext(ctx context.Context) (Model, error) {
 }
 
 // SolveConcurrentContext is SolveContext for the concurrent solvers of
-// SolveConcurrent; see both. Interruption relies on an event handler the
-// binding includes automatically, so a model built without
-// IncludeDefaultPlugins whose first solve is a concurrent one started from a
-// stage past the problem stage cannot be stopped before it completes.
+// SolveConcurrent; see both. Two caveats beyond those of SolveContext: a
+// context that is done while another model's concurrent solve still holds
+// SCIP's process-wide thread pool stops the wait for it (the solve never
+// starts), and interruption relies on an event handler the binding includes
+// automatically, so a model built without IncludeDefaultPlugins whose first
+// solve is a concurrent one started from a stage past the problem stage
+// cannot be stopped before it completes.
 func (m Model) SolveConcurrentContext(ctx context.Context) (Model, error) {
 	return m.solveContext(ctx, "SolveConcurrentContext", func() (Model, error) {
-		return m.solveConcurrentCore("SolveConcurrentContext")
+		return m.solveConcurrentCore("SolveConcurrentContext", ctx)
 	})
 }
 

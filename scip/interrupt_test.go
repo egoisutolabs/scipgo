@@ -197,6 +197,42 @@ func TestInterruptWatcherReissuesAcrossSolveStart(t *testing.T) {
 	}
 }
 
+// A deadline that fires while another concurrent solve holds SCIP's
+// process-wide thread pool must stop the wait for it: the solve never starts
+// and the pool is left working for the next solve.
+func TestSolveConcurrentContextWaitingForPool(t *testing.T) {
+	model := hardTestModel(t)
+	model, err := model.SetIntParam("parallel/maxnthreads", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpiPool.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	solved, err := model.SolveConcurrentContext(ctx)
+	tpiPool.Unlock()
+	if elapsed := time.Since(start); elapsed > 30*time.Second {
+		t.Fatalf("wait ran %v past the deadline", elapsed)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("SolveConcurrentContext error = %v, want context.DeadlineExceeded", err)
+	}
+	if solved.NNodes() != 0 {
+		t.Fatalf("NNodes = %d, want 0: the solve must not have started", solved.NNodes())
+	}
+
+	// The abandoned wait must not have wedged the pool.
+	other, err := createTestModel(t).SetIntParam("parallel/maxnthreads", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := other.SolveConcurrent().Status(); s != StatusOptimal {
+		t.Fatalf("follow-up concurrent solve status = %v, want Optimal", s)
+	}
+}
+
 // A context deadline stops the workers of a concurrent solve, and the model
 // is usable for a sequential solve afterwards.
 func TestSolveConcurrentContextInterrupts(t *testing.T) {
