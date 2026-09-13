@@ -134,12 +134,14 @@ if errors.Is(err, context.DeadlineExceeded) {
 
 The error is an `*scip.Error` wrapping the context error, so
 `errors.Is(err, context.DeadlineExceeded)` works. An already-done context
-prevents `SCIPsolve` from being called at all. A stop is noticed between
-nodes, LP iterations and pricing rounds — a single long operation such as a
-big root LP or a slow plugin callback delays it until that operation returns,
-and a plugin that wants finer granularity can check its own context between
-callbacks. A stopped solve leaves the model usable: `BestSol` returns the
-incumbent if one was found, and `FreeTransform` plus a new solve work.
+prevents `SCIPsolve` from being called at all, and a cancellation that
+arrives as the solve starts is re-issued until it lands. A stop is noticed
+between nodes, presolve rounds, LP iterations and pricing rounds — a single
+long operation such as a big root LP or a slow plugin callback delays it
+until that operation returns, and a plugin that wants finer granularity can
+check its own context between callbacks. A stopped solve leaves the model
+usable: `BestSol` returns the incumbent if one was found, and
+`FreeTransform` plus a new solve work.
 
 Concurrent solves are stopped through an event handler the binding includes
 automatically; a model built without `IncludeDefaultPlugins` whose first

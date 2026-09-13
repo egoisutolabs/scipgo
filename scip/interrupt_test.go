@@ -171,6 +171,32 @@ func TestSolveContextCancelledDuringPresolve(t *testing.T) {
 	}
 }
 
+// A stop request delivered while no solve is running yet — for instance a
+// context that fires between the initial ctx.Err check and SCIPsolve's entry,
+// where SCIP discards its own interrupt flag — must still stop the solve:
+// the watcher keeps re-issuing the request, and the forwarding flag survives
+// because the context path resets stale state before its watcher exists.
+func TestInterruptWatcherReissuesAcrossSolveStart(t *testing.T) {
+	model := hardTestModel(t)
+	solveDone := make(chan struct{})
+	watching := make(chan struct{})
+	go func() {
+		close(watching)
+		model.scip.interruptWhile(solveDone)
+	}()
+	<-watching // the stop flag is set; no solve is running yet
+
+	// The solve arrangement of SolveContext: no stale-state reset.
+	solved, err := model.solveCore("Solve")
+	close(solveDone)
+	if err != nil {
+		t.Fatalf("solveCore: %v", err)
+	}
+	if s := solved.Status(); s != StatusUserInterrupt {
+		t.Fatalf("status = %v, want UserInterrupt: the stop request was lost", s)
+	}
+}
+
 // A context deadline stops the workers of a concurrent solve, and the model
 // is usable for a sequential solve afterwards.
 func TestSolveConcurrentContextInterrupts(t *testing.T) {

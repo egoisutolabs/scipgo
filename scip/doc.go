@@ -49,10 +49,11 @@
 // SolveConcurrentContext wrap that in a context.Context: when it is done they
 // stop the solve and return the context error wrapped in an *Error alongside
 // the interrupted model, whose status is StatusUserInterrupt and whose
-// incumbent, if any, is still available. A stop is noticed between nodes, LP
-// iterations and pricing rounds; a single long operation, such as a big root
-// LP or a slow plugin callback, delays it until that operation returns, and a
-// plugin can check its own context between callbacks. A concurrent solve is
-// stopped through an event handler the binding includes automatically; one
-// caveat applies, documented on SolveConcurrentContext.
+// incumbent, if any, is still available. A stop is noticed between nodes,
+// presolve rounds, LP iterations and pricing rounds; a single long operation,
+// such as a big root LP or a slow plugin callback, delays it until that
+// operation returns, and a plugin can check its own context between
+// callbacks. A concurrent solve is stopped through an event handler the
+// binding includes automatically; one caveat applies, documented on
+// SolveConcurrentContext.
 package scip

@@ -206,11 +206,19 @@ func (m Model) TrySolve() (Model, error) {
 	if err := m.guard("Solve"); err != nil {
 		return m, err
 	}
+	m.scip.clearInterrupt() // a leftover Interrupt from before this solve must not stop it
+	return m.solveCore("Solve")
+}
+
+// solveCore is the solve call without interrupt-state handling, which the
+// context-aware solves arrange themselves before their watcher exists.
+func (m Model) solveCore(op string) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	err := m.scip.solve()
 	if cp := callbackError(m.scip.raw); cp != nil {
 		return m, cp
 	}
-	return m, m.wrap("Solve", err, "")
+	return m, m.wrap(op, err, "")
 }
 
 // Solve solves the model. It panics on failure, including with the
@@ -230,11 +238,19 @@ func (m Model) TrySolveConcurrent() (Model, error) {
 	if err := m.guard("SolveConcurrent"); err != nil {
 		return m, err
 	}
+	m.scip.clearInterrupt() // a leftover Interrupt from before this solve must not stop it
+	return m.solveConcurrentCore("SolveConcurrent")
+}
+
+// solveConcurrentCore is the concurrent solve call without interrupt-state
+// handling; see solveCore.
+func (m Model) solveConcurrentCore(op string) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	err := m.scip.solveConcurrent()
 	if cp := callbackError(m.scip.raw); cp != nil {
 		return m, cp
 	}
-	return m, m.wrap("SolveConcurrent", err, "")
+	return m, m.wrap(op, err, "")
 }
 
 // SolveConcurrent solves the model using SCIP's concurrent solvers. Custom
@@ -250,12 +266,12 @@ func (m Model) SolveConcurrent() Model {
 // ------------------------------------------------------------- interruption
 
 // Interrupt asks SCIP to stop the solve currently in progress at the next
-// opportunity. The request is noticed between nodes, LP iterations and
-// pricing rounds; a single long operation — a big root LP, a slow plugin
-// callback — delays the stop until it returns. Unlike every other Model
-// method, Interrupt is safe to call from another goroutine while the solve
-// runs; that is its purpose. It is a no-op when no solve is running, on a
-// freed or zero Model, and a request left over from before a solve is
+// opportunity. The request is noticed between nodes, presolve rounds, LP
+// iterations and pricing rounds; a single long operation — a big root LP, a
+// slow plugin callback — delays the stop until it returns. Unlike every other
+// Model method, Interrupt is safe to call from another goroutine while the
+// solve runs; that is its purpose. It is a no-op when no solve is running, on
+// a freed or zero Model, and a request left over from before a solve is
 // discarded when the next one starts.
 //
 // A stopped solve returns normally with status StatusUserInterrupt and the
@@ -279,7 +295,9 @@ func (m Model) Interrupt() {
 // before the request is noticed, the completed result is returned with a nil
 // error. A panic inside a plugin callback is reported as for TrySolve.
 func (m Model) SolveContext(ctx context.Context) (Model, error) {
-	return m.solveContext(ctx, "SolveContext", m.TrySolve)
+	return m.solveContext(ctx, "SolveContext", func() (Model, error) {
+		return m.solveCore("SolveContext")
+	})
 }
 
 // SolveConcurrentContext is SolveContext for the concurrent solvers of
@@ -288,12 +306,15 @@ func (m Model) SolveContext(ctx context.Context) (Model, error) {
 // IncludeDefaultPlugins whose first solve is a concurrent one started from a
 // stage past the problem stage cannot be stopped before it completes.
 func (m Model) SolveConcurrentContext(ctx context.Context) (Model, error) {
-	return m.solveContext(ctx, "SolveConcurrentContext", m.TrySolveConcurrent)
+	return m.solveContext(ctx, "SolveConcurrentContext", func() (Model, error) {
+		return m.solveConcurrentCore("SolveConcurrentContext")
+	})
 }
 
-// solveContext is the shared shape of the context-aware solves: watch ctx,
-// interrupt on cancellation, then attribute a UserInterrupt to the context
-// only when the interrupt actually landed.
+// solveContext is the shared shape of the context-aware solves: discard stale
+// stop requests, watch ctx, interrupt on cancellation — re-issuing the
+// request so it cannot be lost to solve startup — and attribute a
+// UserInterrupt to the context only when the interrupt actually landed.
 func (m Model) solveContext(ctx context.Context, op string, solve func() (Model, error)) (Model, error) {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard(op); err != nil {
@@ -302,15 +323,21 @@ func (m Model) solveContext(ctx context.Context, op string, solve func() (Model,
 	if err := ctx.Err(); err != nil {
 		return m, m.cancelled(op, "context done before solve started", err)
 	}
+	// Reset stale state BEFORE the watcher exists: a cancellation observed
+	// from here on is re-issued until the solve call returns, so neither
+	// this reset nor SCIPsolve's own interrupt reset can wipe it.
+	m.scip.clearInterrupt()
+	solveDone := make(chan struct{})
 	done := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		defer close(done)
-		m.Interrupt()
+		m.scip.interruptWhile(solveDone)
 	})
 	solved, err := solve()
+	close(solveDone)
 	if !stop() {
-		// The function fired. Wait for it to return so its interrupt cannot
-		// land on the next solve, which resets the flags on entry.
+		// The watcher fired. Wait for it to return so it is not issuing
+		// interrupts at the next solve.
 		<-done
 		if err == nil && solved.scip.status() == StatusUserInterrupt {
 			return solved, solved.cancelled(op, "solve interrupted by context cancellation", ctx.Err())
