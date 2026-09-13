@@ -191,7 +191,9 @@ model := scip.NewModel().
 	IncludeDefaultPlugins()
 model.ReadProb("problem.mps")
 solved := model.Solve()
-obj := solved.BestSol().ObjValExact() // *big.Rat, e.g. 7615/1
+if sol, ok := solved.BestSol(); ok {
+	obj := sol.ObjValExact() // *big.Rat, e.g. 7615/1
+}
 ```
 
 `Solution.ValExact` and `ObjValExact` report the solver's rationals as
