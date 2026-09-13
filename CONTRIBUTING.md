@@ -91,7 +91,8 @@ For a new `Model` method:
    freed-model case and the wrong-stage case.
 4. Document it: a doc comment on both forms, and a line in the relevant
    guide under `docs/` if it is user-facing. Add a `CHANGELOG.md` entry
-   under Unreleased.
+   under the section for the next release, adding an Unreleased section
+   if there is none yet.
 
 For a new plugin kind, mirror an existing one end to end: the interface
 and result types, the C trampolines in `helpers.c` and `helpers.h`, the

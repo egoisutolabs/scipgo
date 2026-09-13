@@ -4,7 +4,7 @@ All notable changes to scipgo are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] - 2026-09-13
 
 ### Added
 
@@ -84,7 +84,7 @@ uses [Semantic Versioning](https://semver.org/).
   builders, the seven plugin kinds, probing and diving, the datastore,
   concurrent solving, and the example programs.
 
-[Unreleased]: https://github.com/egoisutolabs/scipgo/compare/v0.2.1...HEAD
+[0.3.0]: https://github.com/egoisutolabs/scipgo/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/egoisutolabs/scipgo/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/egoisutolabs/scipgo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/egoisutolabs/scipgo/releases/tag/v0.1.0
