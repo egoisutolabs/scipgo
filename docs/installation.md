@@ -99,29 +99,33 @@ ARG SCIP_VERSION=10.0.2
 
 FROM golang:1.25-bookworm AS build
 ARG SCIP_VERSION
-RUN apt-get update && apt-get install -y wget && \
-    wget -q https://github.com/scipopt/scip/releases/download/v${SCIP_VERSION}/scipoptsuite_${SCIP_VERSION}-1+bookworm_amd64.deb && \
-    apt-get install -y ./scipoptsuite_${SCIP_VERSION}-1+bookworm_amd64.deb
+ARG TARGETARCH
+# SCIP names its Debian packages amd64 and aarch64; Docker calls the latter arm64.
+RUN case "$TARGETARCH" in amd64) arch=amd64 ;; arm64) arch=aarch64 ;; *) echo "no SCIP package for $TARGETARCH" && exit 1 ;; esac && \
+    apt-get update && apt-get install -y wget && \
+    wget -q -O /scip.deb https://github.com/scipopt/scip/releases/download/v${SCIP_VERSION}/scipoptsuite_${SCIP_VERSION}-1+bookworm_${arch}.deb && \
+    apt-get install -y /scip.deb
 WORKDIR /src
 COPY . .
 RUN go build -o /out/app ./cmd/app
 
 FROM debian:bookworm-slim
-ARG SCIP_VERSION
 # libscip links against GMP, zlib and the other suite libraries, so install
 # the package rather than copying libscip alone; apt pulls in the closure.
-COPY --from=build /scipoptsuite_${SCIP_VERSION}-1+bookworm_amd64.deb /tmp/
-RUN apt-get update && apt-get install -y --no-install-recommends /tmp/scipoptsuite_*.deb && \
-    rm -rf /tmp/*.deb /var/lib/apt/lists/*
+COPY --from=build /scip.deb /tmp/scip.deb
+RUN apt-get update && apt-get install -y --no-install-recommends /tmp/scip.deb && \
+    rm -rf /tmp/scip.deb /var/lib/apt/lists/*
 COPY --from=build /out/app /app
 ENTRYPOINT ["/app"]
 ```
 
 Check the releases page for the exact package name of the Debian or Ubuntu
-version you build on. Installing the package in the runtime stage, rather
-than copying `libscip` by hand, brings in the libraries it is linked
-against (GMP, zlib, the suite's own LP solver) that the dynamic loader
-needs at startup.
+version you build on. The build stage picks the package for the image's
+architecture from Docker's `TARGETARCH`, so the same file builds on amd64
+and arm64 hosts. Installing the package in the runtime stage, rather than
+copying `libscip` by hand, brings in the libraries it is linked against
+(GMP, zlib, the suite's own LP solver) that the dynamic loader needs at
+startup.
 
 ## Troubleshooting
 

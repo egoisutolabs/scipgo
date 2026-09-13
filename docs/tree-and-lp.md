@@ -100,6 +100,9 @@ infeasible := model.AddCut(row, false)
 constraint, which is what SCIP's statistics report. `SeparatorPlugin` and
 `ConshdlrPlugin` also have `CreateEmptyRow` for the same purpose. Rows
 can also be added to a probing or diving LP with `AddRow` on the session.
+Rows the binding creates are currently never released back to SCIP, so
+they are kept until the process exits; see
+[#25](https://github.com/egoisutolabs/scipgo/issues/25).
 
 ## Columns
 

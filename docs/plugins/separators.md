@@ -82,6 +82,14 @@ report `Cutoff`.
 for attribution and `AddToSolving(model)` to create it; see
 [Tree and LP](../tree-and-lp.md#rows).
 
+Known issue: the binding holds a SCIP capture on every row it creates and
+does not release it after `AddCut`, so each created row is kept for the
+life of the process rather than freed when SCIP is done with it. On a
+long branch-and-cut solve that is a leak of one row per cut. Tracked in
+[#25](https://github.com/egoisutolabs/scipgo/issues/25); until it is
+fixed, create rows only for cuts you will add, and prefer `Freq(0)` for a
+separator that produces many rows.
+
 ## Example
 
 `examples/clique_separator` builds the conflict graph of a set

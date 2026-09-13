@@ -197,8 +197,10 @@ model.ReadProb("instance.mps")
 solved := model.Solve()
 
 if sol, ok := solved.BestSol(); ok {
-	obj := sol.ObjValExact() // *big.Rat
-	val := sol.ValExact(x)   // *big.Rat
+	fmt.Println(sol.ObjValExact()) // *big.Rat, e.g. 7615/1
+	for _, v := range solved.OrigVars() {
+		fmt.Println(v.Name(), sol.ValExact(v)) // *big.Rat per variable
+	}
 }
 ```
 
