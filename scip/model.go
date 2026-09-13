@@ -118,7 +118,8 @@ func (m Model) CreateProb(name string) Model {
 // ReadProb reads a problem from the given file. On failure the zero Model is
 // returned, matching russcip; the receiver itself may have entered the
 // problem stage with a partially read problem if SCIP failed after creating
-// it, so call FreeTransform/CreateProb before reusing it.
+// it. FreeTransform does not discard that, so call CreateProb (or Free the
+// model and create a new one) before reusing it.
 func (m Model) ReadProb(filename string) (Model, error) {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("ReadProb"); err != nil {

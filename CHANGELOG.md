@@ -40,7 +40,9 @@ uses [Semantic Versioning](https://semver.org/).
 
 - `BranchingCandidate.Frac` is SCIP's fractionality, in `[0, 1)`; it was
   a signed remainder and negative for negative LP values.
-- `scip.GetParam` reports failures as `*Error`, like the typed getters.
+- `scip.SetParam` and `scip.GetParam` report every failure as `*Error`,
+  including an unsupported Go type and an `int` outside the `int32` range,
+  like the typed methods.
 - `Prober.SolveLp`, `Prober.SolveLpWithPricing` and `Diver.SolveLp` report
   an LP solver error as `*Error` instead of a bare `Retcode`.
 

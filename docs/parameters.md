@@ -33,14 +33,14 @@ and `string`. An `int` is sent as SCIP's `int` type, so a long-integer
 parameter such as `limits/nodes` must be passed as `int64`. `GetParam`
 takes a pointer of the matching type.
 
-The errors from the typed methods and from `SetParam` and `GetParam` are
-`*scip.Error` values whose `Retcode` tells the cause:
-`RetcodeParameterUnknown`, `RetcodeParameterWrongType` or
-`RetcodeParameterWrongVal`. The one exception is a Go type the generic
-functions do not support, such as a `uint` value or a `*float32`
-destination, which is reported as a plain error before SCIP is involved.
-SCIP also prints a line about a failed parameter call to stderr;
-[Logging](logging.md) explains how to redirect that.
+Every error from the parameter API, typed or generic, is a `*scip.Error`
+whose `Retcode` tells the cause: `RetcodeParameterUnknown`,
+`RetcodeParameterWrongType` or `RetcodeParameterWrongVal` from SCIP, and
+`RetcodeInvalidData` when `SetParam` or `GetParam` is handed a Go type it
+does not support, such as a `uint` value or a `*float32` destination. An
+`int` outside the `int32` range is `RetcodeParameterWrongVal`. Failures
+SCIP itself reports also print a line to stderr; [Logging](logging.md)
+explains how to redirect that.
 
 ## Convenience methods
 

@@ -136,7 +136,13 @@ func TestGetParamErrorIsError(t *testing.T) {
 	if err := GetParam(model, "limits/nodes", &i); !errors.Is(err, RetcodeParameterWrongType) {
 		t.Fatalf("wrong out type: %v", err)
 	}
-	if err := GetParam(model, "limits/nodes", &struct{}{}); err == nil {
-		t.Fatal("unsupported out type must be rejected")
+	if err := GetParam(model, "limits/nodes", &struct{}{}); !errors.Is(err, RetcodeInvalidData) || asError(t, err).Op != "GetParam" {
+		t.Fatalf("unsupported out type: %v", err)
+	}
+	if _, err := SetParam(model, "limits/nodes", uint(1)); !errors.Is(err, RetcodeInvalidData) || asError(t, err).Op != "SetParam" {
+		t.Fatalf("unsupported value type: %v", err)
+	}
+	if _, err := SetParam(model, "display/freq", int(1)<<40); !errors.Is(err, RetcodeParameterWrongVal) || asError(t, err).Op != "SetIntParam" {
+		t.Fatalf("int overflow: %v", err)
 	}
 }
