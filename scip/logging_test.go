@@ -1,0 +1,253 @@
+package scip
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"syscall"
+	"testing"
+)
+
+// captureFd1 redirects file descriptor 1 — which C's stdout writes to, not
+// just Go's os.Stdout — to a pipe for the duration of fn, and returns what
+// was written.
+func captureFd1(t *testing.T, fn func()) string {
+	t.Helper()
+	saved, err := syscall.Dup(1)
+	if err != nil {
+		t.Fatalf("dup: %v", err)
+	}
+	defer func() {
+		if err := syscall.Close(saved); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("close saved fd: %v", err)
+		}
+	}()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	if err := syscall.Dup2(int(w.Fd()), 1); err != nil {
+		t.Fatalf("dup2: %v", err)
+	}
+	fn()
+	if err := syscall.Dup2(saved, 1); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	return buf.String()
+}
+
+// TestSetLogWriterCapturesSolve checks the headline: with a sink installed,
+// the solve output lands in the sink and nothing leaks to process stdout.
+func TestSetLogWriterCapturesSolve(t *testing.T) {
+	var buf bytes.Buffer
+	stdout := captureFd1(t, func() {
+		model := NewModel().SetLogWriter(&buf).IncludeDefaultPlugins()
+		if _, err := model.ReadProb(testFile("simple.mps")); err != nil {
+			t.Errorf("read: %v", err)
+			return
+		}
+		model.Solve()
+	})
+	if !strings.Contains(buf.String(), "original problem") {
+		t.Errorf("sink missed the problem line; got %d bytes", buf.Len())
+	}
+	if !strings.Contains(buf.String(), "SCIP Status") {
+		t.Errorf("sink missed the SCIP Status line")
+	}
+	if stdout != "" {
+		t.Errorf("%d bytes leaked to process stdout: %q", len(stdout), stdout[:min(len(stdout), 200)])
+	}
+}
+
+// TestLogLinesAreWhole checks fragments are buffered to whole lines: no
+// emitted line contains a newline, and the display header — assembled from
+// several messages — arrives as one record.
+func TestLogLinesAreWhole(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+	model := NewModel().SetLogFunc(func(_ LogLevel, line string) {
+		mu.Lock()
+		lines = append(lines, line)
+		mu.Unlock()
+	}).IncludeDefaultPlugins()
+	if _, err := model.ReadProb(testFile("simple.mps")); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	model.SetPresolving(ParamSettingOff).Solve()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) < 5 {
+		t.Fatalf("only %d lines captured", len(lines))
+	}
+	header := false
+	for _, l := range lines {
+		if strings.Contains(l, "\n") {
+			t.Errorf("emitted line contains a newline: %q", l)
+		}
+		if strings.Contains(l, " time | node") && strings.Contains(l, "dualbound") {
+			header = true
+		}
+	}
+	if !header {
+		t.Errorf("display header did not arrive as one record")
+	}
+}
+
+// TestHideOutputSilencesSink checks routing does not bypass verbosity: with
+// display/verblevel at zero nothing reaches the sink.
+func TestHideOutputSilencesSink(t *testing.T) {
+	var buf bytes.Buffer
+	model := NewModel().SetLogWriter(&buf).IncludeDefaultPlugins().HideOutput()
+	if _, err := model.ReadProb(testFile("simple.mps")); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	model.Solve()
+	if buf.Len() != 0 {
+		t.Errorf("sink received %d bytes despite HideOutput", buf.Len())
+	}
+}
+
+// recordingHandler collects slog records for SetLogger assertions.
+type recordingHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *recordingHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *recordingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r)
+	return nil
+}
+
+func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *recordingHandler) WithGroup(string) slog.Handler      { return h }
+
+// TestSetLogger checks the slog mapping: info lines become Info records.
+// None of the bundled models provokes SCIPwarningMessage, so the Warn
+// mapping is checked against the installed sink directly.
+func TestSetLogger(t *testing.T) {
+	h := &recordingHandler{}
+	logger := slog.New(h)
+	model := NewModel().SetLogger(logger).IncludeDefaultPlugins()
+	if _, err := model.ReadProb(testFile("simple.mps")); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	model.Solve()
+
+	h.mu.Lock()
+	if len(h.records) == 0 {
+		t.Fatal("no slog records emitted")
+	}
+	for _, r := range h.records {
+		if r.Level != slog.LevelInfo {
+			t.Errorf("solve output mapped to %v, want Info", r.Level)
+		}
+	}
+	h.mu.Unlock()
+
+	// The installed sink, given a warning line, must map to Warn. Earlier
+	// tests leave their sinks registered, so the probe goes to all of them
+	// and the marker is matched by message: only ours writes to this
+	// logger.
+	logSinks.mu.Lock()
+	sinks := make([]*logSink, 0, len(logSinks.m))
+	for _, s := range logSinks.m {
+		sinks = append(sinks, s)
+	}
+	logSinks.mu.Unlock()
+	if len(sinks) == 0 {
+		t.Fatal("no sink registered")
+	}
+	for _, sink := range sinks {
+		sink.write(LogWarning, "worse things have happened\n")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	found := false
+	for _, r := range h.records {
+		if r.Message == "worse things have happened" && r.Level == slog.LevelWarn {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("warning line not mapped to a Warn record")
+	}
+}
+
+// TestWriteStatsJSONNotRouted checks the file hint: statistics written to a
+// real FILE* go to that file, not through the sink.
+func TestWriteStatsJSONNotRouted(t *testing.T) {
+	var buf bytes.Buffer
+	model := NewModel().SetLogWriter(&buf).IncludeDefaultPlugins()
+	if _, err := model.ReadProb(testFile("simple.mps")); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	model.Solve()
+	buf.Reset()
+
+	path := filepath.Join(t.TempDir(), "stats.json")
+	if err := model.WriteStatsJSON(path); err != nil {
+		t.Fatalf("WriteStatsJSON: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		t.Fatalf("stats file not written: %v", err)
+	}
+	var v map[string]any
+	if err := json.Unmarshal(data, &v); err != nil {
+		t.Fatalf("stats file is not JSON: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("stats leaked into the sink: %q", buf.String()[:min(buf.Len(), 200)])
+	}
+}
+
+// TestConcurrentSolveWithSink checks the sink is safe under a concurrent
+// solve; run with -race. SCIPcopy passes the message handler to the workers
+// it spawns, so the sink can be called from several threads at once. Whether
+// SCIP spawns workers at all is its own decision (parallel/maxnthreads,
+// memory limits, models presolve resolves); on this build gen-ip054 with two
+// threads runs the solve through the master, so the assertion is on output
+// captured and race cleanliness, not on worker lines specifically.
+func TestConcurrentSolveWithSink(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+	model := hardTestModel(t).SetLogFunc(func(_ LogLevel, line string) {
+		mu.Lock()
+		lines = append(lines, line)
+		mu.Unlock()
+	}).SetDisplayVerbosity(4)
+	model, err := model.SetIntParam("parallel/maxnthreads", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model, err = model.SetRealParam("limits/time", 2); err != nil {
+		t.Fatal(err)
+	}
+	model.SolveConcurrent()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) == 0 {
+		t.Error("sink captured nothing during the concurrent solve")
+	}
+	for _, l := range lines {
+		if strings.Contains(l, "\n") {
+			t.Errorf("emitted line contains a newline: %q", l)
+		}
+	}
+}

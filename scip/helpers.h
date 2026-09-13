@@ -50,4 +50,14 @@ SCIP_RETCODE scipgo_watchProblem(SCIP* scip);
 /* Copies every plugin of source into target (all SCIPcopyPlugins flags on). */
 SCIP_RETCODE scipgo_copyPlugins(SCIP* source, SCIP* target, SCIP_Bool* valid);
 
+/* Installs a Go-backed message handler (data is the sink's registry id) or
+   SCIP's default stdout handler. SCIP only allows this in the Init and
+   Problem stages. */
+SCIP_RETCODE scipgo_setMessagehdlr(SCIP* scip, uintptr_t data);
+SCIP_RETCODE scipgo_setDefaultMessagehdlr(SCIP* scip);
+
+/* Routes process-global SCIP error messages into Go (or restores stderr). */
+void scipgo_setErrorPrinting(void);
+void scipgo_setErrorPrintingDefault(void);
+
 #endif /* SCIPGO_HELPERS_H */

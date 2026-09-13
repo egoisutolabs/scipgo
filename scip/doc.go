@@ -27,6 +27,13 @@
 // Panics inside a callback are captured and re-raised from the enclosing
 // Solve.
 //
+// SCIP's log can be routed into Go per model — SetLogFunc delivers whole
+// lines to a callback, SetLogWriter and SetLogger adapt it to an io.Writer
+// or a *slog.Logger — and must be installed before the problem is
+// transformed (stage Init or Problem, i.e. before the first Solve). Error
+// messages are process-global instead: SetErrorLogFunc redirects them for
+// the whole process. See the Logging section of the README.
+//
 // Every Model method that can fail against SCIP has two forms. The Try*
 // method returns an error: an *Error carrying the operation, SCIP stage and
 // Retcode for a solver failure, or a *CallbackPanic when a plugin callback

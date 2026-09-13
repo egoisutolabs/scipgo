@@ -150,6 +150,38 @@ automatically; a model built without `IncludeDefaultPlugins` whose first
 solve is a `SolveConcurrent` started from a stage past the problem stage
 cannot be stopped before it completes.
 
+## Logging
+
+SCIP writes its log to the process stdout by default. `SetLogFunc`,
+`SetLogWriter` and `SetLogger` route it into Go instead, per model:
+
+```go
+var buf bytes.Buffer
+model := scip.NewModel().
+	SetLogWriter(&buf). // one whole line per callback, no trailing newline
+	IncludeDefaultPlugins()
+model.ReadProb("problem.mps")
+model.Solve() // the SCIP Status line is in buf, not on stdout
+```
+
+The handler must be installed before the problem is transformed — stage Init
+or Problem, which is before the first `Solve`; after one, `FreeTransform`
+brings the model back and allows swapping it again. `SetLogFunc(nil)`
+restores the default stdout handler. Lines are buffered from SCIP's
+fragments and delivered whole; output SCIP writes to a specific file (such as
+`WriteStatsJSON`) stays in that file. Routing does not change what SCIP
+prints: `display/verblevel` still applies, and `HideOutput` silences
+everything before it reaches the sink.
+
+During a concurrent solve the handler is copied to the worker instances, so
+the callback can be invoked from several threads at once; it must be safe
+for concurrent use and must not call back into the model.
+
+Error messages (`SCIPerrorMessage`) are not part of the message handler:
+they go through one process-global hook. `scip.SetErrorLogFunc(fn)` redirects
+them for the whole process — not per model — and passes fragments through
+unbuffered; `scip.SetErrorLogFunc(nil)` restores stderr.
+
 ## Nonlinear constraints
 
 Build an expression tree from variables and constants and add it as a
