@@ -54,8 +54,9 @@ A handle is valid until the thing it points to is released:
 | Handle | Lives until |
 | --- | --- |
 | Original `Variable`, `Constraint`, `Solution` | The problem is replaced (`CreateProb`, `ReadProb`) or the model is freed |
-| Transformed `Variable`, `Constraint` | `FreeTransform` |
-| `Row`, `Col`, `Node` | `FreeTransform`; also only meaningful during the solve |
+| Transformed `Variable`, global transformed `Constraint` | `FreeTransform` |
+| `Constraint` from `AddConsLocal` or `AddConsNode` | Its node's subtree is deleted, which the binding does not detect; use it within the callback |
+| `Row`, `Col`, `Node` | `FreeTransform`; SCIP may release a row or free a node earlier, which the binding does not detect, so use them within the callback |
 | Plugin wrappers (`HeuristicPlugin` and friends) | The model is freed |
 
 Using a handle past that point produces a `*scip.Error`; see

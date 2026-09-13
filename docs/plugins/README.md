@@ -70,14 +70,19 @@ was handed. Creating a separate model inside a callback and solving that is
 fine, and is how the cutting stock and bin packing examples solve their
 pricing subproblems.
 
-Variable and constraint handles obtained inside a callback stay valid
+Variable handles, and handles of constraints added globally, stay valid
 for the whole solve, not just the callback, and report an error rather
-than crashing once the transformed problem is gone. Node and row handles
-are different: SCIP frees a node once it is processed and releases a row
-once it leaves the LP and the cut pool, and the binding does not track
-either event. Use a `Node` or `Row` only while SCIP still exposes it,
-that is during the callback that obtained it or while it is listed by the
-tree and LP accessors, and store stable data such as `Node.Number()` for
+than crashing once the transformed problem is gone. Three kinds of handle
+live shorter than that, and the binding does not track their release:
+
+- a constraint added with `AddConsLocal` or `AddConsNode` belongs to its
+  node and is freed with the subtree;
+- a `Node` is freed once SCIP has processed it;
+- a `Row` is released once it leaves the LP and the cut pool.
+
+Use those only while SCIP still exposes them, that is during the callback
+that obtained them or while the tree and LP accessors list them, and keep
+stable data such as `Node.Number()` or the constraint's definition for
 anything you need later. The bin packing example keys its branching
 decisions by node number for exactly this reason.
 

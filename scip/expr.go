@@ -15,8 +15,11 @@ import (
 // state nonlinear constraints. Build one with Variable.Expr, Const, Sum,
 // Product, Pow and friends, or the arithmetic methods, then pass it to
 // Model.AddConsNonlinear or ConsBuilder.Expression. Nothing is sent to SCIP
-// until the constraint is added, so an Expr can be built before its model
-// exists and reused across models. The zero Expr is invalid.
+// until the constraint is added. A tree built from Const and ParseExpr alone
+// is model-independent and can be built before its model exists and reused
+// across models; a tree containing Variable.Expr is bound to that variable's
+// model, and adding it to another model is rejected with RetcodeInvalidData.
+// The zero Expr is invalid.
 type Expr struct{ n *exprNode }
 
 type exprKind int

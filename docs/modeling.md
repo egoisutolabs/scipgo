@@ -116,8 +116,12 @@ packing or covering constraint.
 ## Nonlinear constraints
 
 Nonlinear constraints are stated as expression trees. An `Expr` is
-immutable, built in Go, and only sent to SCIP when a constraint is added,
-so it can be built before its model exists and reused across models.
+immutable, built in Go, and only sent to SCIP when a constraint is added.
+A tree that contains `Variable.Expr()` is bound to that variable's model;
+adding it to another model is rejected with `RetcodeInvalidData`. A tree
+built from `Const` and `ParseExpr` alone carries no variables and can be
+built before any model exists and added to several, since `ParseExpr`
+resolves names in whichever model the constraint goes into.
 
 ```go
 x := model.AddVar(-1, 1, 1, "x", scip.VarTypeContinuous)
@@ -174,7 +178,9 @@ model.AddConsNode(&child, scip.NewCons().Coef(x, 1).Le(3))
 
 `AddConsLocal` is the usual way for a [constraint handler](plugins/constraint-handlers.md)
 to cut off a subtour or a [branching rule](plugins/branch-rules.md) to
-implement a custom disjunction.
+implement a custom disjunction. The returned handle belongs to the node:
+SCIP frees the constraint with the subtree, and the binding does not track
+that, so use the handle inside the callback that created it and not later.
 
 ## Reading and writing files
 

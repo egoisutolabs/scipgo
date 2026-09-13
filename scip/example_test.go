@@ -284,7 +284,11 @@ func (roundingHeur) Execute(model scip.Model, heur scip.HeuristicPlugin, _ scip.
 	}
 	sol := model.CreateSolFor(heur)
 	for _, v := range model.Vars() {
-		sol.SetVal(v, math.Round(model.CurrentVal(v)))
+		val := model.CurrentVal(v)
+		if v.VarType() != scip.VarTypeContinuous {
+			val = math.Round(val)
+		}
+		sol.SetVal(v, val)
 	}
 	if err := model.AddSol(&sol); err != nil {
 		if errors.Is(err, scip.SolErrorInfeasible) {

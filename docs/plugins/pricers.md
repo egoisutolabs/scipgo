@@ -82,15 +82,16 @@ func (p *patternPricer) GenerateColumns(model scip.Model, _ scip.PricerPlugin, f
 
 	// 2. pricing subproblem: a knapsack with the duals as profits
 	items, profit := p.solveKnapsack(duals)
-	cost := 1.0
+	const cost = 1.0 // every pattern costs one roll in the master
+	testCost := cost
 	if farkas {
-		cost = 0
+		testCost = 0 // Farkas pricing ignores the objective
 	}
-	if cost-profit >= -model.Eps() {
+	if testCost-profit >= -model.Eps() {
 		return scip.PricerResult{State: scip.PricerResultStateNoColumns}
 	}
 
-	// 3. add the column
+	// 3. add the column, with its real master cost
 	v := model.AddPricedVar(0, scip.Infinity, cost, p.name(items), scip.VarTypeInteger)
 	for _, i := range items {
 		model.AddConsCoef(p.demand[i], v, 1)
@@ -104,8 +105,9 @@ The pieces:
 - **Duals.** The constraints you hold from building the model are
   original ones; `Transformed` returns the working copy whose duals are
   current. `DualSol` and `FarkasDualSol` are defined for linear
-  constraints. In Farkas pricing the column's objective coefficient is
-  treated as zero, since the goal is feasibility.
+  constraints. In Farkas pricing the reduced-cost test treats the
+  objective as zero, since the goal is feasibility; the column added to
+  the master still gets its real cost.
 - **The subproblem.** Anything works: a nested `scip.Model` (what the
   examples do), a dynamic program, a hand-written solver. A nested model
   is a separate SCIP instance and may be created and freed inside the
@@ -122,8 +124,14 @@ fixing a column to zero does not stop the pricer from regenerating it.
 Two approaches, both in the examples:
 
 - **Price only at the root.** `examples/cutting_stock` returns
-  `NoColumns` at depth greater than zero, so the tree below uses the
-  columns found at the root. Simple and often adequate.
+  `NoColumns` at depth greater than zero, so the tree below is solved
+  over the columns found at the root. This is a heuristic, not exact
+  branch-and-price: returning `NoColumns` tells SCIP the node's LP is
+  optimal, while a column that was not improving at the root can have
+  negative reduced cost under a child's duals. The result is the optimum
+  over the root's column set, which may be worse than the true optimum.
+  Adequate when the root generates the useful columns, which it often
+  does; say so in your documentation if you ship it.
 - **Branch on the structure.** `examples/bin_packing` implements
   Ryan-Foster branching: a custom [branch rule](branch-rules.md) creates
   children that force two items together or apart, records the decision
