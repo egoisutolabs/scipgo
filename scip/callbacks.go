@@ -156,7 +156,11 @@ func forgetCopy(scip *C.SCIP) {
 // be discarded, not released through the fresh instance.
 func copyDies(scip *C.SCIP) {
 	forgetCopy(scip)
+	// The copy is being destroyed: nothing can retry a refused release
+	// through it. Whatever releaseRowsOfOwner restored for retrying would
+	// be stale data once the address is reused, so drop it outright.
 	releaseRowsOfOwner(scip)
+	discardRowsOfOwner(scip)
 }
 
 // pluginCopy resolves the Go plugin behind source plugin data, records target

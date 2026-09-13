@@ -50,6 +50,9 @@ func (d *Diver) rowOp(op string, r Row, call func() C.SCIP_RETCODE) error {
 	if err := m.checkHandle(op, "Row", r.raw != nil, r.scip, r.gen, false); err != nil {
 		return err
 	}
+	if err := r.deadRowErr(op); err != nil {
+		return err
+	}
 	return m.call(op, call())
 }
 

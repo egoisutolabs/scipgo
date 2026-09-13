@@ -95,11 +95,38 @@ func TestRowRelease(t *testing.T) {
 	row := NewRow().Name("released").AddTo(model)
 	resetRowCount(t)
 	row.Release()
-	if err := row.TryRelease(); err == nil || !errors.Is(err, RetcodeInvalidData) {
-		t.Fatalf("double release = %v, want RetcodeInvalidData", err)
+	if err := row.TryRelease(); err == nil || !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("double release = %v, want RetcodeInvalidCall", err)
 	}
 	if got := rowCount(); got != 1 {
 		t.Fatalf("Release fired %d times, want 1", got)
+	}
+	// The handle is dead: reads panic with InvalidCall, writes return it.
+	func() {
+		defer func() {
+			r := recover()
+			e, ok := r.(*Error)
+			if !ok || !errors.Is(e, RetcodeInvalidCall) {
+				t.Fatalf("Name() on released row panicked with %v", r)
+			}
+		}()
+		_ = row.Name()
+	}()
+	if err := row.TrySetCoeff(model.Vars()[0], 1); err == nil || !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("TrySetCoeff on released row = %v, want RetcodeInvalidCall", err)
+	}
+}
+
+// TestFilteredCutHandleDead checks the same for a cut SCIP did not retain:
+// the add frees the row, and the handle reports InvalidCall afterwards.
+func TestFilteredCutHandleDead(t *testing.T) {
+	model := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("p0201.mps"))
+	defer model.Free()
+	model.Solve()
+	row := NewRow().Name("filtered_dead").Local(true).AddTo(model)
+	model.AddCut(row, false)
+	if err := row.TrySetCoeff(model.Vars()[0], 1); err == nil || !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("TrySetCoeff on filtered cut = %v, want RetcodeInvalidCall", err)
 	}
 }
 

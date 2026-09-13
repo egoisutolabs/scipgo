@@ -1377,10 +1377,8 @@ func (s *Scip) freeTransform() error {
 	relErr := releaseRowsOfOwner(s.raw)
 	err := retcodeError(C.SCIPfreeTransform(s.raw))
 	if err == nil {
-		err = relErr // a row that could not be released is still outstanding
-	}
-	if err == nil {
 		s.root().transGen++ // every transformed handle is now dead
+		err = relErr // a row that could not be released is still outstanding
 	}
 	return err
 }
