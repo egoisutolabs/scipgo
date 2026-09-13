@@ -60,4 +60,11 @@ SCIP_RETCODE scipgo_setDefaultMessagehdlr(SCIP* scip);
 void scipgo_setErrorPrinting(void);
 void scipgo_setErrorPrintingDefault(void);
 
+SCIP_RETCODE scipgo_enableExact(SCIP* scip, SCIP_Bool enable);
+
+/* Exact (rational) value readout: write a malloc'd string representation of
+   the value into *str (free with free()); the caller parses it. */
+SCIP_RETCODE scipgo_solValExact(SCIP* scip, SCIP_SOL* sol, SCIP_VAR* var, char** str);
+SCIP_RETCODE scipgo_solOrigObjExact(SCIP* scip, SCIP_SOL* sol, char** str);
+
 #endif /* SCIPGO_HELPERS_H */
