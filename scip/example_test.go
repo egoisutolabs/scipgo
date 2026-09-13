@@ -287,7 +287,10 @@ func (roundingHeur) Execute(model scip.Model, heur scip.HeuristicPlugin, _ scip.
 		sol.SetVal(v, math.Round(model.CurrentVal(v)))
 	}
 	if err := model.AddSol(&sol); err != nil {
-		return scip.HeurResultNoSolFound
+		if errors.Is(err, scip.SolErrorInfeasible) {
+			return scip.HeurResultNoSolFound
+		}
+		panic(err) // a SCIP failure or a constraint handler panic: re-raise it
 	}
 	return scip.HeurResultFoundSol
 }

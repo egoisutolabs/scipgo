@@ -38,7 +38,8 @@ A few operations are stage-specific in ways worth remembering:
   transformed, that is in Init or Problem.
 - Plugins are registered in Problem (or Init, before the problem exists).
 - Queries that need the transformed problem, such as `ObjVal` and `Vars`
-  after a solve, work from Transformed onwards; `OrigVars` works always.
+  after a solve, work from Transformed onwards; `OrigVars` works from
+  Problem onwards.
 - `AddVar` during Solving, from a pricer, returns the transformed variable.
 
 ## Handles
@@ -109,6 +110,8 @@ consequences.
 
 Sub-SCIPs that SCIP creates internally, for large neighbourhood search
 heuristics and for concurrent workers, share their origin's datastore (see
-[Plugins](plugins/README.md#sharing-data-with-plugins)) but are otherwise
-distinct instances, and a handle from one must not be passed to the
-parent model.
+[Plugins](plugins/README.md#sharing-data-with-plugins), including the
+locking that sharing requires under `SolveConcurrent`) but are otherwise
+distinct instances. A handle from the parent must not be passed to a
+sub-SCIP's model and vice versa; both directions are rejected with
+`RetcodeInvalidData`.

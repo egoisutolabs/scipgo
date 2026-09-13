@@ -1455,18 +1455,20 @@ func (s *Scip) siblings() []*C.SCIP_NODE {
 func lpBranchingCands(scip *C.SCIP) []BranchingCandidate {
 	var lpcands **C.SCIP_VAR
 	var lpcandssol *C.double
+	var lpcandsfrac *C.double
 	var nlpcands C.int
 	var nfracimplvars C.int
-	C.SCIPgetLPBranchCands(scip, &lpcands, &lpcandssol, nil, &nlpcands, nil, &nfracimplvars)
+	C.SCIPgetLPBranchCands(scip, &lpcands, &lpcandssol, &lpcandsfrac, &nlpcands, nil, &nfracimplvars)
 
 	cands := make([]BranchingCandidate, 0, int(nlpcands))
 	for i := 0; i < int(nlpcands); i++ {
 		varPtr := cVarAt(lpcands, i)
-		lpSolVal := float64(cAt(lpcandssol, i))
 		cands = append(cands, BranchingCandidate{
 			VarProbID: int(C.SCIPvarGetProbindex(varPtr)),
-			LpSolVal:  lpSolVal,
-			Frac:      lpSolVal - math.Trunc(lpSolVal),
+			LpSolVal:  float64(cAt(lpcandssol, i)),
+			// SCIP's fractionality is in [0, 1) for negative values too; a
+			// plain lpSolVal - trunc(lpSolVal) would be negative there.
+			Frac: float64(cAt(lpcandsfrac, i)),
 		})
 	}
 	return cands

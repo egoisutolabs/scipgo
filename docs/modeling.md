@@ -206,7 +206,7 @@ sharing an instance without revealing what it models.
 | --- | --- |
 | `NVars`, `NConss` | Counts |
 | `Vars` | All variables of the transformed problem once it exists, otherwise the original ones |
-| `OrigVars` | The original variables, in every stage |
+| `OrigVars` | The original variables, from the Problem stage on (before `CreateProb` or `ReadProb` there are none) |
 | `Conss` | All constraints |
 | `FindCons(name)` | A constraint by name |
 | `Var(id)`, `VarInProb(i)` | A variable by index |

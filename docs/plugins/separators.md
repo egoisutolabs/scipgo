@@ -94,10 +94,14 @@ gap at the root.
 
 - Only violated cuts help. Check the LP value of the cut before adding it;
   `CurrentVal` gives the variable values.
-- Rows created by a separator live until `FreeTransform`; a row handle
-  can be kept in the plugin for reuse, for example to check whether a cut
-  is already in the LP with `IsInLP`.
-- `Row.Dual`, `Row.BasisStatus` and `Row.ActiveLPCount` tell how useful a
-  previously added cut has been.
+- Do not keep a `Row` handle across callbacks. SCIP releases a cut once
+  it leaves the LP and the cut pool, and the binding cannot tell when that
+  happened. Keep the cut's definition in your own data instead and rebuild
+  the row when it is violated again.
+- Within the callback that created it, `Row.Dual`, `Row.BasisStatus` and
+  `Row.ActiveLPCount` on rows returned by `Constraint.Row` or `Col.Rows`
+  tell how useful existing rows have been.
 - A separator that implements `Copyable` also separates inside sub-MIP
-  heuristics, which is usually beneficial for cheap separators.
+  heuristics, which is usually beneficial for cheap separators, provided
+  it works from the `Model` it is called with rather than from handles of
+  the parent model; see the [plugin overview](README.md#copies-and-sub-scips).

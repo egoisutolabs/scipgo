@@ -13,7 +13,7 @@ type or a value out of range:
 model, err := model.SetIntParam("display/freq", 100)
 model, err = model.SetLongintParam("limits/nodes", 10000)
 model, err = model.SetRealParam("limits/gap", 0.01)
-model, err = model.SetBoolParam("misc/usesymmetry", false)
+model, err = model.SetBoolParam("lp/presolving", false)
 model, err = model.SetStrParam("visual/vbcfilename", "tree.vbc")
 
 freq := model.IntParam("display/freq")      // panics on failure
@@ -33,9 +33,13 @@ and `string`. An `int` is sent as SCIP's `int` type, so a long-integer
 parameter such as `limits/nodes` must be passed as `int64`. `GetParam`
 takes a pointer of the matching type.
 
-The errors are `*scip.Error` values whose `Retcode` tells the cause:
+The errors from the typed methods and from `SetParam` and `GetParam` are
+`*scip.Error` values whose `Retcode` tells the cause:
 `RetcodeParameterUnknown`, `RetcodeParameterWrongType` or
-`RetcodeParameterWrongVal`. SCIP also prints a line about it to stderr;
+`RetcodeParameterWrongVal`. The one exception is a Go type the generic
+functions do not support, such as a `uint` value or a `*float32`
+destination, which is reported as a plain error before SCIP is involved.
+SCIP also prints a line about a failed parameter call to stderr;
 [Logging](logging.md) explains how to redirect that.
 
 ## Convenience methods
@@ -70,7 +74,7 @@ if h, ok := model.FindHeuristic("rens"); ok {
 	h.SetFreq(-1)                        // disable
 }
 if s, ok := model.FindSeparator("gomory"); ok {
-	model.SetSeparatorPriority(s, 100000) // run it first
+	model.SetSeparatorPriority(s, 2000000) // ahead of every built-in separator
 }
 ```
 

@@ -36,6 +36,12 @@ uses [Semantic Versioning](https://semver.org/).
 - Guides under `docs/`, a contributing guide, this changelog, and
   runnable examples on pkg.go.dev.
 
+### Fixed
+
+- `BranchingCandidate.Frac` is SCIP's fractionality, in `[0, 1)`; it was
+  a signed remainder and negative for negative LP values.
+- `scip.GetParam` reports failures as `*Error`, like the typed getters.
+
 ### Changed
 
 - Plugin families are named after one stem each: `Heuristic`,

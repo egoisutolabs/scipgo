@@ -70,10 +70,16 @@ was handed. Creating a separate model inside a callback and solving that is
 fine, and is how the cutting stock and bin packing examples solve their
 pricing subproblems.
 
-Handles obtained inside a callback (variables, rows, nodes) are valid for
-the duration of the solve, not just the callback. Store them if you need
-them later; they report an error rather than crashing if used after the
-solve's transformed problem is gone.
+Variable and constraint handles obtained inside a callback stay valid
+for the whole solve, not just the callback, and report an error rather
+than crashing once the transformed problem is gone. Node and row handles
+are different: SCIP frees a node once it is processed and releases a row
+once it leaves the LP and the cut pool, and the binding does not track
+either event. Use a `Node` or `Row` only while SCIP still exposes it,
+that is during the callback that obtained it or while it is listed by the
+tree and LP accessors, and store stable data such as `Node.Number()` for
+anything you need later. The bin packing example keys its branching
+decisions by node number for exactly this reason.
 
 ## Sharing data with plugins
 
@@ -103,6 +109,15 @@ Store a pointer when the data is mutated later. One value per type is
 kept; setting a second value of the same type replaces the first. The
 datastore is released with the model.
 
+The datastore is one per model and is shared with every sub-SCIP copy,
+including the workers of `SolveConcurrent`. A `Copyable` plugin running in
+those workers therefore sees the same pointers from several threads at
+once, and an unguarded map write like the one above can race or crash the
+process. Either protect mutable datastore values with a mutex, or keep
+mutable per-worker state in the fresh value `Copy` returns and use the
+datastore for data that is read-only during the solve. A plugin without
+`Copy` never runs in a worker and needs neither.
+
 ## Copies and sub-SCIPs
 
 SCIP creates copies of the model for its large neighbourhood search
@@ -115,10 +130,17 @@ func (c *myConshdlr) Copy() any { return c }            // stateless: share
 func (h *myHeur) Copy() any     { return &myHeur{rng: newRNG()} } // stateful: fresh
 ```
 
-`Copy` returns the value to register in the copy. Return the receiver for
-plugins without per-instance state; return a fresh value otherwise, since
-a copy inside a concurrent worker runs on that worker's thread at the same
-time as the other copies and the original.
+`Copy` returns the value to register in the copy. Return the receiver
+only for a plugin that holds neither mutable state nor handles: a copy
+runs against a different SCIP instance, and a `Variable`, `Constraint` or
+`Model` of the parent passed to that instance is rejected with
+`RetcodeInvalidData`, which surfaces as a `*scip.CallbackPanic`. A plugin
+that holds handles must resolve them again from the `Model` its callbacks
+receive, for example by matching `model.Vars()` on names once per copy,
+and keep the result in the fresh value `Copy` returns. A plugin with
+mutable state needs a fresh value too, since a copy inside a concurrent
+worker runs on that worker's thread at the same time as the other copies
+and the original.
 
 Plugins without `Copy` never run inside sub-SCIPs. For most kinds that is
 harmless: the sub-MIP simply runs without your heuristic or branching
@@ -144,7 +166,7 @@ use. See [Errors](../errors.md#scipcallbackpanic).
 SCIP consults plugins of one kind in descending priority order, and a
 frequency of `f` means the plugin runs at every `f`th depth of the tree
 (1 at every node, -1 never). The defaults the builders use are chosen so
-that a custom plugin runs, and runs first:
+that a custom plugin runs, and for most kinds runs first:
 
 | Builder | Priority | Other defaults |
 | --- | --- | --- |
@@ -154,10 +176,14 @@ that a custom plugin runs, and runs first:
 | `NewPricer` | 100000 | `Delay(false)` |
 | `NewSeparator` | 100000 | `Freq(1)`, `MaxBoundDist(1.0)`, `UsesSubscip(false)`, `Delay(false)` |
 
-For comparison, SCIP's default branching rule (`relpscost`) has priority
-10000, its heuristics range from -1000000 to 3000000 and its separators
-from -100000 to 3000. A constraint handler's two priorities are explained
-on its page.
+For comparison, in SCIP 10 the default branching rule `relpscost` has
+priority 10000, the built-in heuristics range from -3000010 (`trysol`) to
+75000 (`dps`), and the built-in separators from -1200000
+(`rapidlearning`) to 1000000 (`closecuts`). So a custom branching rule,
+heuristic or node selector at the default priority runs before every
+built-in one, while a custom separator at 100000 runs after `closecuts`;
+raise its priority if it must go first. A constraint handler's two
+priorities are explained on its page.
 
 ## Performance
 

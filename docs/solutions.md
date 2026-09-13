@@ -42,9 +42,13 @@ Values are floating point and honour SCIP's feasibility tolerance. A binary
 variable set to 1 may come back as `0.9999999`; compare against `0.5`, and
 round integers with `math.Round`, as the examples do.
 
-The solutions of a solve stay readable after the solve, and survive
-`FreeTransform`. They do not survive `Free` or a `CreateProb` or `ReadProb`
-that replaces the problem.
+The solutions of a solve stay readable after the solve, until
+`FreeTransform`. A `Solution` handle from `BestSol` or `GetSols` belongs
+to the transformed problem, so `FreeTransform` invalidates it; using it
+afterwards reports a `*scip.Error` rather than a value. Read the values
+you need before `FreeTransform`, or call `BestSol` or `GetSols` again
+afterwards: SCIP keeps the solutions in the original space and returns
+fresh handles for them. `Free`, `CreateProb` and `ReadProb` discard them.
 
 ## Solutions during a solve
 

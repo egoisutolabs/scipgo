@@ -71,7 +71,10 @@ func (h *rounding) Execute(model scip.Model, heur scip.HeuristicPlugin, _ scip.H
 		sol.SetVal(v, math.Round(model.CurrentVal(v)))
 	}
 	if err := model.AddSol(&sol); err != nil {
-		return scip.HeurResultNoSolFound // infeasible, SCIP rejected it
+		if errors.Is(err, scip.SolErrorInfeasible) {
+			return scip.HeurResultNoSolFound // SCIP checked it and rejected it
+		}
+		panic(err) // a SCIP failure or a panic in a constraint handler's Check
 	}
 	return scip.HeurResultFoundSol
 }
@@ -84,7 +87,11 @@ heuristic is executing when `AddSol` is called, regardless of which
 constructor made the solution; both forms of attribution show up in the
 solve log and `StatsJSON`. `AddSol` consumes the solution and returns
 `scip.SolErrorInfeasible` if SCIP's check rejected it, which is the normal
-outcome for a guess that did not work.
+outcome for a guess that did not work. Any other error is a SCIP failure
+or a panic recovered from a constraint handler's `Check`; do not swallow
+it, since `AddSol` has already collected that panic and returning
+`NoSolFound` would hide it from the enclosing `Solve`. Panicking with the
+error inside the callback re-raises it properly.
 
 `CreateOrigSolFor` and `CreatePartialSolFor` are the original-space and
 partial variants; see [Solutions](../solutions.md).

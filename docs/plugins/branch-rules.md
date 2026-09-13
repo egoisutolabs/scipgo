@@ -18,7 +18,7 @@ type BranchRule interface {
 type BranchingCandidate struct {
 	VarProbID int     // index of the variable in the current problem; Model.VarInProb resolves it
 	LpSolVal  float64 // its LP value
-	Frac      float64 // the fractional part of that value
+	Frac      float64 // its fractionality, in [0, 1) for negative values too
 }
 ```
 

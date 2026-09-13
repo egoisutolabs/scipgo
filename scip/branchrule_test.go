@@ -164,3 +164,43 @@ func TestInternalScipBranchRule(t *testing.T) {
 	model.Add(NewBranchRule(firstBranchingRule{t: t}).MaxDepth(1))
 	model.Solve()
 }
+
+// negFracRule records the candidates it is offered.
+type negFracRule struct{ seen []BranchingCandidate }
+
+func (r *negFracRule) Execute(_ Model, _ BranchRulePlugin, cands []BranchingCandidate) BranchingResult {
+	r.seen = append(r.seen, cands...)
+	return BranchOn(cands[0])
+}
+
+// TestBranchingCandidateFracNegative checks Frac is SCIP's fractionality in
+// [0, 1) rather than a signed remainder: x = -1.5 has Frac 0.5, not -0.5.
+func TestBranchingCandidateFracNegative(t *testing.T) {
+	model := MinimalModel().HideOutput().Minimize()
+	defer model.Free()
+	// Bound propagation on the linear constraint would round y's bounds to
+	// integers and make the LP integral, so it is switched off: the LP then
+	// sits at x = -10, y = -3.5 and the rule sees y with fractionality 0.5.
+	if _, err := SetParam(model, "constraints/linear/propfreq", int32(-1)); err != nil {
+		t.Fatal(err)
+	}
+	x := model.AddVar(-10, 10, 1, "x", VarTypeInteger)
+	y := model.AddVar(-10, 10, 1, "y", VarTypeInteger)
+	model.AddCons([]Variable{x, y}, []float64{1, -2}, -3, -3, "link") // x - 2y = -3
+	rule := &negFracRule{}
+	model.Add(NewBranchRule(rule).Name("negfrac"))
+	model.Solve()
+	if len(rule.seen) == 0 {
+		t.Fatal("rule was not called")
+	}
+	c := rule.seen[0]
+	if c.LpSolVal > -3.4 || c.LpSolVal < -3.6 {
+		t.Fatalf("LpSolVal = %v, want -3.5", c.LpSolVal)
+	}
+	if c.Frac < 0.49 || c.Frac > 0.51 {
+		t.Fatalf("Frac = %v, want 0.5", c.Frac)
+	}
+	if model.Status() != StatusOptimal || model.ObjVal() != -12 { // x = -9, y = -3
+		t.Fatalf("status %v obj %v", model.Status(), model.ObjVal())
+	}
+}

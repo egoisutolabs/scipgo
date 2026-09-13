@@ -37,31 +37,31 @@ func SetParam(m Model, name string, value any) (Model, error) {
 func GetParam(m Model, name string, out any) error {
 	switch o := out.(type) {
 	case *float64:
-		v, err := m.scip.realParam(name)
+		v, err := m.TryRealParam(name)
 		if err != nil {
 			return err
 		}
 		*o = v
 	case *int32:
-		v, err := m.scip.intParam(name)
+		v, err := m.TryIntParam(name)
 		if err != nil {
 			return err
 		}
 		*o = v
 	case *int64:
-		v, err := m.scip.longintParam(name)
+		v, err := m.TryLongintParam(name)
 		if err != nil {
 			return err
 		}
 		*o = v
 	case *bool:
-		v, err := m.scip.boolParam(name)
+		v, err := m.TryBoolParam(name)
 		if err != nil {
 			return err
 		}
 		*o = v
 	case *string:
-		v, err := m.scip.strParam(name)
+		v, err := m.TryStrParam(name)
 		if err != nil {
 			return err
 		}

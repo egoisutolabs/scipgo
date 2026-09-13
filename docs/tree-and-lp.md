@@ -115,6 +115,12 @@ A `Col` is a variable's column in the LP, reached with `Variable.Col`:
 | `MinPrimalSol`, `MaxPrimalSol`, `Age`, `NStrongBranches`, `StrongBranchingNode` | History |
 | `IsIntegral`, `IsRemovable` | Flags |
 
-Rows, columns and nodes exist only inside the solve. After `FreeTransform`
-they report an error; after the solve ends but before `FreeTransform` the
-LP data is still there for statistics.
+Rows, columns and nodes exist only inside the solve, and not necessarily
+for all of it: SCIP frees a node once it has been processed and releases a
+row once it has left the LP and the cut pool. The binding detects the end
+of the transformed problem (a handle used after `FreeTransform` reports an
+error) but not those earlier releases, so keep a `Node` or `Row` handle
+only while SCIP still exposes it, during the callback that obtained it or
+while the tree and LP accessors list it, and store `Node.Number()` or the
+row's name for later reference. After the solve ends but before
+`FreeTransform`, the LP data is still there for statistics.

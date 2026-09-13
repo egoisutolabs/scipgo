@@ -137,11 +137,14 @@ solved = model.Solve()
 second := solved.ObjVal()
 ```
 
-Variables, constraints and solutions you obtained in the Problem stage
-survive `FreeTransform`. Transformed variables, rows, columns and nodes,
-which only exist inside the solve, do not; using one afterwards produces a
-`*scip.Error` rather than a crash. Plugins stay registered, and the
-solutions from the previous run are kept as candidates for the next one.
+Variables and constraints you obtained in the Problem stage survive
+`FreeTransform`. Transformed variables, rows, columns, nodes and the
+`Solution` handles a solve produced do not; using one afterwards produces
+a `*scip.Error` rather than a crash. Read the values you need from a
+solution before `FreeTransform`, or call `BestSol` or `GetSols` again after
+it, since SCIP keeps the solutions themselves and hands out fresh handles.
+Plugins stay registered, and the previous run's solutions are candidates
+for the next one.
 
 `FreeTransform` runs plugin callbacks (each plugin's free hook), so like
 `Solve` it has a `TryFreeTransform` form that reports a `*CallbackPanic`.

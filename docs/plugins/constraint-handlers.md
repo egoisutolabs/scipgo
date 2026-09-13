@@ -106,8 +106,6 @@ func (h *subtourHandler) Enforce(model scip.Model, _ scip.ConshdlrPlugin) scip.C
 	}
 	return scip.ConshdlrResultConsAdded
 }
-
-func (h *subtourHandler) Copy() any { return h }
 ```
 
 `Check` receives a `Solution` and reads it with `Val`; `Enforce` reads the
@@ -121,9 +119,20 @@ SCIP's large neighbourhood search heuristics copy the problem into a
 sub-SCIP and solve it. A copy is only valid if every constraint handler
 can be copied. A handler without `Copy` marks every copy invalid, which
 silently disables RENS, RINS, crossover and the other sub-MIP heuristics
-for the whole solve. Implement `Copyable` unless that is what you want;
-returning the receiver is correct for a handler whose fields are read-only
-during the solve.
+for the whole solve. The example above accepts that trade-off, and so does
+`examples/tsp`.
+
+Implementing `Copyable` on a handler like this one is not as simple as
+returning the receiver. The sub-SCIP is a different instance with its own
+variables, and the `[]scip.Variable` the handler holds belong to the
+parent: the copy's `Check` and `Enforce` would hand parent handles to the
+sub-SCIP's model and solution, which reject them with `RetcodeInvalidData`
+and surface a `*scip.CallbackPanic`. The binding does not expose SCIP's
+variable map between a problem and its copies, so a copyable handler must
+resolve its variables from the `Model` it is called with, for instance by
+walking `model.Vars()` once per copy and matching on names, and keep that
+mapping in the fresh value `Copy` returns. Do that when sub-MIP heuristics
+matter for your problem; otherwise leave `Copy` out.
 
 ## Notes
 

@@ -68,13 +68,18 @@ both:
 ```go
 solved, err := model.SolveContext(ctx)
 var e *scip.Error
+var cp *scip.CallbackPanic
 switch {
-case errors.As(err, &e) && errors.Is(err, context.DeadlineExceeded):
+case err == nil:
+	// solved to completion
+case errors.Is(err, context.DeadlineExceeded):
 	// stopped by the deadline; solved holds the interrupted model
-case errors.Is(err, scip.RetcodeInvalidCall):
-	// called in a stage that does not permit it
-case err != nil:
+case errors.As(err, &cp):
+	log.Printf("plugin %s panicked: %v", cp.Plugin, cp.Value)
+case errors.As(err, &e):
 	log.Printf("%s failed in stage %s: %v", e.Op, e.Stage, e.Retcode)
+default:
+	log.Print(err)
 }
 ```
 
@@ -137,8 +142,9 @@ always detected:
   `Free`.
 - A transformed variable, row, column, node or transformed constraint
   used after `FreeTransform` reports `RetcodeInvalidCall`: it belongs to a
-  problem that was freed. Original variables, constraints and solutions
-  survive `FreeTransform`.
+  problem that was freed. Original variables and constraints survive
+  `FreeTransform`; the `Solution` handles of a solve do not, but `BestSol`
+  and `GetSols` return fresh ones afterwards.
 - Any handle used after `CreateProb` or `ReadProb` replaced the problem
   reports the same.
 - A handle passed to a method of a different model reports
