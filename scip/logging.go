@@ -38,7 +38,7 @@ type logSink struct {
 	// buf holds one unterminated partial line per channel. started records
 	// the channels in the order their partials began arriving, so the final
 	// flush emits pending lines in arrival order rather than channel order.
-	buf    [3]strings.Builder
+	buf     [3]strings.Builder
 	started []LogLevel
 }
 
