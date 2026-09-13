@@ -141,7 +141,8 @@ func newScip() (*Scip, error) {
 		return nil, err
 	}
 	s := &Scip{raw: scipPtr}
-	forgetCopy(scipPtr) // the address may have belonged to a freed sub-SCIP
+	forgetCopy(scipPtr)         // the address may have belonged to a freed sub-SCIP
+	discardRowsOfOwner(scipPtr) // its stale row entries are dangling: drop, never release
 	instances.Lock()
 	instances.m[scipPtr] = weak.Make(s)
 	instances.Unlock()
@@ -1373,8 +1374,11 @@ func (s *Scip) freeTransform() error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	// Rows created and never added are the binding's to release before the
 	// transformed problem — and the LP holding its captures — goes away.
-	releaseRowsOfOwner(s.raw)
+	relErr := releaseRowsOfOwner(s.raw)
 	err := retcodeError(C.SCIPfreeTransform(s.raw))
+	if err == nil {
+		err = relErr // a row that could not be released is still outstanding
+	}
 	if err == nil {
 		s.root().transGen++ // every transformed handle is now dead
 	}

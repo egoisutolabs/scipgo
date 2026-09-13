@@ -130,3 +130,22 @@ func TestQueryRowsNotReleasable(t *testing.T) {
 		t.Fatalf("query row release fired %d times", got)
 	}
 }
+
+// TestFilteredCutNotReadAfterRelease pins the P1 from review: a cut SCIP
+// does not retain (forceCut=false, non-efficacious) is freed when the
+// binding drops its capture, so TryAddCut must not read the row — its
+// name, for the error detail — after the add.
+func TestFilteredCutNotReadAfterRelease(t *testing.T) {
+	model := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("p0201.mps"))
+	defer model.Free()
+	model.Solve()
+	row := NewRow().Name("filtered_empty_cut").Local(true).AddTo(model)
+	resetRowCount(t)
+	model.AddCut(row, false)
+	if got := rowCount(); got != 1 {
+		t.Fatalf("binding capture released %d times, want 1", got)
+	}
+	if got := ownedRows(); got != 0 {
+		t.Fatalf("%d rows still owned", got)
+	}
+}

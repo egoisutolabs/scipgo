@@ -42,29 +42,60 @@ func ownRow(s *Scip, row *C.SCIP_ROW) {
 // releaseOwnedRow drops the binding's capture on row if it belongs to the
 // instance s, and reports whether it did. A row the binding did not create
 // (a query result), or one belonging to another instance, is left alone.
-// The release happens outside the registry lock.
-func releaseOwnedRow(s *Scip, row *C.SCIP_ROW) bool {
+// The release happens outside the registry lock; if SCIP refuses it, the
+// ownership entry is restored so a later teardown can retry, and the error
+// is returned alongside released=false.
+func releaseOwnedRowErr(s *Scip, row *C.SCIP_ROW) (bool, error) {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	rowOwners.Lock()
 	owner, ok := rowOwners.rows[row]
 	if !ok || owner != s.raw {
 		rowOwners.Unlock()
-		return false
+		return false, nil
 	}
 	delete(rowOwners.rows, row)
 	rowOwners.Unlock()
 
 	r := row
-	C.SCIPreleaseRow(s.raw, &r)
+	if err := retcodeError(C.SCIPreleaseRow(s.raw, &r)); err != nil {
+		rowOwners.Lock()
+		rowOwners.rows[row] = owner // still captured; let teardown retry
+		rowOwners.Unlock()
+		return false, err
+	}
 	rowOwners.Lock()
 	rowsReleasedForTest++
 	rowOwners.Unlock()
-	return true
+	return true, nil
+}
+
+// releaseOwnedRow is releaseOwnedRowErr for the post-add paths, which are
+// best-effort: the add itself took a capture, so a failed release only
+// defers the row's reclamation to teardown.
+func releaseOwnedRow(s *Scip, row *C.SCIP_ROW) bool {
+	ok, _ := releaseOwnedRowErr(s, row)
+	return ok
+}
+
+// discardRowsOfOwner drops the registry entries for an instance without
+// releasing anything — for a raw address that once belonged to a sub-SCIP
+// which missed its free callbacks: its rows are dangling with the dead
+// copy, and must never be passed to SCIPreleaseRow through the fresh
+// instance now living at that address.
+func discardRowsOfOwner(raw *C.SCIP) {
+	rowOwners.Lock()
+	for row, owner := range rowOwners.rows {
+		if owner == raw {
+			delete(rowOwners.rows, row)
+		}
+	}
+	rowOwners.Unlock()
 }
 
 // releaseRowsOfOwner drops the binding's captures on every row still held
 // by one instance — the rows created and never added — and returns the
-// first release error, if any.
+// first release error, if any. Rows whose release SCIP refuses are put
+// back, so a later teardown can retry them.
 func releaseRowsOfOwner(raw *C.SCIP) error {
 	rowOwners.Lock()
 	var owned []*C.SCIP_ROW
@@ -77,14 +108,26 @@ func releaseRowsOfOwner(raw *C.SCIP) error {
 	rowOwners.Unlock()
 
 	var firstErr error
+	var failed []*C.SCIP_ROW
 	for _, row := range owned {
 		r := row
-		if err := retcodeError(C.SCIPreleaseRow(raw, &r)); err != nil && firstErr == nil {
-			firstErr = err
+		if err := retcodeError(C.SCIPreleaseRow(raw, &r)); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			failed = append(failed, row)
 		}
 	}
+	if len(failed) > 0 {
+		// Put the refused rows back so a later teardown can retry them.
+		rowOwners.Lock()
+		for _, row := range failed {
+			rowOwners.rows[row] = raw
+		}
+		rowOwners.Unlock()
+	}
 	rowOwners.Lock()
-	rowsReleasedForTest += len(owned)
+	rowsReleasedForTest += len(owned) - len(failed)
 	rowOwners.Unlock()
 	return firstErr
 }
@@ -114,7 +157,11 @@ func (r Row) TryRelease() error {
 		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
 			Detail: "row belongs to another model"})
 	}
-	if !releaseOwnedRow(r.scip, r.raw) {
+	released, err := releaseOwnedRowErr(r.scip, r.raw)
+	if err != nil {
+		return err
+	}
+	if !released {
 		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
 			Detail: "row was not created by the binding, or is already released"})
 	}

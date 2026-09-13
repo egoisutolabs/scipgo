@@ -144,12 +144,19 @@ func copyIncarnation(scip *C.SCIP) uint64 {
 }
 
 func forgetCopy(scip *C.SCIP) {
-	// The copy is going away: release the rows its callback models
-	// created, before the address can be reused.
-	releaseRowsOfOwner(scip)
 	copyParents.Lock()
 	defer copyParents.Unlock()
 	delete(copyParents.m, scip)
+}
+
+// copyDies forgets a sub-SCIP that is being freed by SCIP and releases the
+// rows its callback models created, while the copy still exists. Only the
+// plugin free callbacks call it; newScip must not, because a stale address
+// from a copy that missed its callbacks carries dangling rows, which must
+// be discarded, not released through the fresh instance.
+func copyDies(scip *C.SCIP) {
+	forgetCopy(scip)
+	releaseRowsOfOwner(scip)
 }
 
 // pluginCopy resolves the Go plugin behind source plugin data, records target
@@ -310,7 +317,7 @@ func GoBranchFree(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE) (ret C.SCIP_RETCO
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "branchrule", uintptr(C.scipgo_branchruleId(branchrule)))
 	plugins.del(uintptr(C.scipgo_branchruleId(branchrule)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -366,7 +373,7 @@ func GoEventhdlrFree(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR) (ret C.SCIP_RETC
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "eventhdlr", uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	plugins.del(uintptr(C.scipgo_eventhdlrId(eventhdlr)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -421,7 +428,7 @@ func GoNodeselFree(scip *C.SCIP, nodesel *C.SCIP_NODESEL) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "nodesel", uintptr(C.scipgo_nodeselId(nodesel)))
 	plugins.del(uintptr(C.scipgo_nodeselId(nodesel)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -514,7 +521,7 @@ func GoPricerFree(scip *C.SCIP, pricer *C.SCIP_PRICER) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "pricer", uintptr(C.scipgo_pricerId(pricer)))
 	plugins.del(uintptr(C.scipgo_pricerId(pricer)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -558,7 +565,7 @@ func GoHeurFree(scip *C.SCIP, heur *C.SCIP_HEUR) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "heuristic", uintptr(C.scipgo_heurId(heur)))
 	plugins.del(uintptr(C.scipgo_heurId(heur)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -614,7 +621,7 @@ func GoSepaFree(scip *C.SCIP, sepa *C.SCIP_SEPA) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "separator", uintptr(C.scipgo_sepaId(sepa)))
 	plugins.del(uintptr(C.scipgo_sepaId(sepa)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -665,7 +672,7 @@ func GoConsFree(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
 	plugins.del(uintptr(C.scipgo_conshdlrId(conshdlr)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
