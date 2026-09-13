@@ -119,6 +119,18 @@ func setCopyParent(target, source *C.SCIP) {
 	root := rootScip(source)
 	copyParents.Lock()
 	defer copyParents.Unlock()
+	// One sub-SCIP receives copies of many plugins, and every Go*Copy passes
+	// through here: the first plugin of a copy registers the target, and its
+	// siblings must not re-register it. A fresh incarnation would strand the
+	// wrappers already cached for this copy's earlier registry entries —
+	// their frozen incarnation would never match again, so every callback of
+	// those plugins would report a freed model. A new incarnation is due only
+	// for a target that is unknown, or known under a different root: a later
+	// copy at the same address, with the old one's Go*Free forgotten in
+	// between or not.
+	if e, ok := copyParents.m[target]; ok && e.root == root {
+		return
+	}
 	copyParents.next++
 	copyParents.m[target] = copyEntry{root: root, inc: copyParents.next}
 }

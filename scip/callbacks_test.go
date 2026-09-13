@@ -202,9 +202,10 @@ func TestCallbackWrapperPerConcurrentWorker(t *testing.T) {
 
 // allocCountingHdlr tracks the Go-heap allocations between its callbacks.
 type allocCountingHdlr struct {
-	events int
-	prev   uint64
-	minD   uint64
+	events  int
+	samples int
+	prev    uint64
+	minD    uint64
 }
 
 func (h *allocCountingHdlr) GetEventMask() EventMask { return EventMaskNodeFocused }
@@ -213,9 +214,13 @@ func (h *allocCountingHdlr) Execute(model Model, _ EventhdlrPlugin, _ Event) {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	if h.events > 0 {
-		if d := ms.Mallocs - h.prev; h.minD == 0 || d < h.minD {
+		// The minimum is tracked with a separate sample count: a real zero
+		// must not be treated as "no sample yet" and overwritten by a later,
+		// noisier interval.
+		if d := ms.Mallocs - h.prev; h.samples == 0 || d < h.minD {
 			h.minD = d
 		}
+		h.samples++
 	}
 	h.prev = ms.Mallocs
 	h.events++
@@ -238,7 +243,7 @@ func TestEventhdlrCallbacksDoNotAllocate(t *testing.T) {
 	model.IncludeEventhdlr("alloccount", "", h)
 	model.Solve()
 
-	if h.events < 2 {
+	if h.samples < 1 {
 		t.Fatalf("only %d callbacks, need 2 to compare", h.events)
 	}
 	if h.minD != 0 {
@@ -284,4 +289,46 @@ type countingHdlr struct{ events int }
 func (h *countingHdlr) GetEventMask() EventMask { return EventMaskNodeFocused }
 func (h *countingHdlr) Execute(model Model, _ EventhdlrPlugin, _ Event) {
 	h.events++
+}
+
+// stageProbeHdlr calls a guard-checked Model method (Status) from its
+// callback; with sibling plugin copies churning the copy incarnation, a
+// wrapper with a stale incarnation reports a freed model here.
+type stageProbeHdlr struct{ calls atomic.Int32 }
+
+func (h *stageProbeHdlr) GetEventMask() EventMask { return EventMaskNodeFocused }
+
+func (h *stageProbeHdlr) Execute(model Model, _ EventhdlrPlugin, _ Event) {
+	model.Status() // guard-checked: a stale incarnation wrapper reports a freed model here
+	h.calls.Add(1)
+}
+
+func (h *stageProbeHdlr) Copy() any { return h }
+
+// A sub-SCIP receiving several Copyable plugins must keep one incarnation
+// for all of them: each Go*Copy used to re-register the target, so a wrapper
+// cached at the first plugin's include went stale the moment the second
+// plugin was copied, and that plugin's callbacks saw a freed model.
+func TestCopiedPluginsShareOneIncarnation(t *testing.T) {
+	first, second := &stageProbeHdlr{}, &stageProbeHdlr{}
+	source := NewModel().HideOutput().IncludeDefaultPlugins()
+	source.IncludeEventhdlr("first", "", first)
+	source.IncludeEventhdlr("second", "", second)
+
+	target := NewModel().HideOutput()
+	if _, err := source.scip.copyPluginsTo(target.scip); err != nil {
+		t.Fatal(err)
+	}
+	target = mustRead(t, target, testFile("gen-ip054.mps"))
+	target, err := target.SetLongintParam("limits/nodes", 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := target.TrySolve(); err != nil {
+		t.Fatalf("solve with copied handlers: %v", err)
+	}
+	if first.calls.Load() == 0 || second.calls.Load() == 0 {
+		t.Fatalf("copied handlers ran %d and %d times, want both > 0",
+			first.calls.Load(), second.calls.Load())
+	}
 }
