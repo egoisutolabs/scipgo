@@ -32,7 +32,7 @@
 // or a *slog.Logger — and must be installed before the problem is
 // transformed (stage Init or Problem, i.e. before the first Solve). Error
 // messages are process-global instead: SetErrorLogFunc redirects them for
-// the whole process. See the Logging section of the README.
+// the whole process. See docs/logging.md in the repository.
 //
 // Every Model method that can fail against SCIP has two forms. The Try*
 // method returns an error: an *Error carrying the operation, SCIP stage and
@@ -43,6 +43,9 @@
 // FreeTransform, on a handle from another model, or in a stage SCIP does not
 // permit for that query, produce an *Error rather than undefined behaviour
 // inside SCIP; queries panic with it, Try* forms return it.
+//
+// The guides under docs/ in the repository cover installation, modeling,
+// solving, plugins and the rest in more depth than this overview.
 //
 // A Model and every handle derived from it belong to one goroutine. SCIP
 // instances are released by a finalizer, or immediately by Model.Free, which
