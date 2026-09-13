@@ -1378,7 +1378,7 @@ func (s *Scip) freeTransform() error {
 	err := retcodeError(C.SCIPfreeTransform(s.raw))
 	if err == nil {
 		s.root().transGen++ // every transformed handle is now dead
-		err = relErr // a row that could not be released is still outstanding
+		err = relErr        // a row that could not be released is still outstanding
 	}
 	return err
 }
