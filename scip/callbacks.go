@@ -23,10 +23,17 @@ type pluginRegistry struct {
 }
 
 // pluginEntry records which SCIP instance a plugin was included into, so a
-// copy made into a sub-SCIP can be traced back to it.
+// copy made into a sub-SCIP can be traced back to it. model is the weak
+// wrapper handed to that plugin's callbacks: minted once here rather than on
+// every callback, because a hot event handler fires thousands of times per
+// second and the wrapper is immutable per registry entry. Entries are never
+// shared between instances — every include, original or copy, registers its
+// own — so the cached wrapper always wraps exactly the instance the plugin
+// lives in.
 type pluginEntry struct {
-	item any
-	scip *C.SCIP
+	item  any
+	scip  *C.SCIP
+	model Model
 }
 
 var plugins = &pluginRegistry{items: make(map[uintptr]pluginEntry)}
@@ -38,8 +45,18 @@ func (r *pluginRegistry) put(item any, scip *C.SCIP) uintptr {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.next++
-	r.items[r.next] = pluginEntry{item: item, scip: scip}
+	r.items[r.next] = pluginEntry{item: item, scip: scip, model: Model{scip: weakScip(scip)}}
 	return r.next
+}
+
+// entry returns the plugin object and the Model its callbacks receive, in one
+// lookup. A missing id yields a nil item and the zero Model; callers treat
+// that like pluginAs does.
+func (r *pluginRegistry) entry(id uintptr) (any, Model) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e := r.items[id]
+	return e.item, e.model
 }
 
 func (r *pluginRegistry) get(id uintptr) any {
@@ -154,16 +171,20 @@ func (r *pluginRegistry) del(id uintptr) {
 	delete(r.items, id)
 }
 
-// pluginAs fetches the Go plugin behind a SCIP plugin data pointer and
-// asserts its type, stashing a panic on mismatch.
-func pluginAs[T any](scip *C.SCIP, id uintptr) (T, bool) {
-	item := plugins.get(id)
+// pluginAs fetches the Go plugin behind a SCIP plugin data pointer, asserts
+// its type (stashing a panic on mismatch), and returns the cached Model that
+// plugin's callbacks receive — the wrapper minted when the plugin was
+// included, so a callback allocates nothing to address its instance.
+func pluginAs[T any](scip *C.SCIP, id uintptr) (T, Model, bool) {
+	item, model := plugins.entry(id)
 	t, ok := item.(T)
 	if !ok {
 		stashPanic(scip, "", fmt.Sprintf("scip: plugin data is %T, want %v",
 			item, reflect.TypeOf((*T)(nil)).Elem()))
+		var zero T
+		return zero, model, ok
 	}
-	return t, ok
+	return t, model, ok
 }
 
 // panicStash stores panics raised inside SCIP callbacks. Panics cannot unwind
@@ -246,14 +267,18 @@ func GoProbDelorig(scip *C.SCIP) C.SCIP_RETCODE {
 	return C.SCIP_OKAY
 }
 
-// weakScip wraps a raw SCIP pointer without taking ownership, as needed
-// inside plugin callbacks.
+// weakScip wraps a raw SCIP pointer without taking ownership. It runs once
+// per include (to cache the wrapper in the plugin registry entry) and once
+// per plugin copy — never per callback; see pluginEntry.
 func weakScip(scip *C.SCIP) *Scip {
 	// The owner is the strong instance this callback belongs to (through
 	// copyParents for sub-SCIP copies), held weakly so handles minted here
 	// share its liveness and die with it without keeping it alive; see
 	// handleErr. A copy wrapper also records which incarnation of the copy
-	// it belongs to.
+	// it belongs to, frozen at this moment: the entry it is cached in dies
+	// with the copy (Go*Free drops it before the address can be reused),
+	// and a wrapper user code kept from an earlier copy is not revived by a
+	// later one because the incarnations differ.
 	root := rootScip(scip)
 	w := &Scip{raw: scip, weak: true}
 	w.owner, _ = instanceWeak(root)
@@ -261,12 +286,6 @@ func weakScip(scip *C.SCIP) *Scip {
 		w.copyInc = copyIncarnation(scip)
 	}
 	return w
-}
-
-// solvingModel wraps a raw SCIP pointer into a Model in the Solving stage, as
-// passed to plugin callbacks.
-func solvingModel(scip *C.SCIP) Model {
-	return Model{scip: weakScip(scip)}
 }
 
 // ---------------------------------------------------------------- branchrule
@@ -303,13 +322,12 @@ func GoBranchCopy(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE) (ret C.SCIP_RETCO
 func GoBranchExecLp(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE, allowaddcons C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "branchrule", uintptr(C.scipgo_branchruleId(branchrule)))
-	rule, ok := pluginAs[BranchRule](scip, uintptr(C.scipgo_branchruleId(branchrule)))
+	rule, model, ok := pluginAs[BranchRule](scip, uintptr(C.scipgo_branchruleId(branchrule)))
 	if !ok {
 		return
 	}
 
 	cands := lpBranchingCands(scip)
-	model := solvingModel(scip)
 	br := BranchRulePlugin{raw: branchrule, scip: model.scip}
 	res := rule.Execute(model, br, cands)
 
@@ -358,7 +376,7 @@ func GoEventhdlrCopy(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR) (ret C.SCIP_RETC
 func GoEventhdlrInit(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "eventhdlr", uintptr(C.scipgo_eventhdlrId(eventhdlr)))
-	hdlr, ok := pluginAs[Eventhdlr](scip, uintptr(C.scipgo_eventhdlrId(eventhdlr)))
+	hdlr, _, ok := pluginAs[Eventhdlr](scip, uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	if !ok {
 		return
 	}
@@ -370,14 +388,12 @@ func GoEventhdlrInit(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR) (ret C.SCIP_RETC
 func GoEventhdlrExec(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR, event *C.SCIP_EVENT, eventdata *C.SCIP_EVENTDATA) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "eventhdlr", uintptr(C.scipgo_eventhdlrId(eventhdlr)))
-	hdlr, ok := pluginAs[Eventhdlr](scip, uintptr(C.scipgo_eventhdlrId(eventhdlr)))
+	hdlr, model, ok := pluginAs[Eventhdlr](scip, uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	if !ok {
 		return
 	}
-	s := weakScip(scip)
-	model := Model{scip: s}
 	sh := EventhdlrPlugin{raw: eventhdlr, scip: model.scip}
-	ev := Event{raw: event, scip: s}
+	ev := Event{raw: event, scip: model.scip}
 	hdlr.Execute(model, sh, ev)
 	ret = C.SCIP_OKAY
 	return
@@ -416,11 +432,10 @@ func GoNodeselCopy(scip *C.SCIP, nodesel *C.SCIP_NODESEL) (ret C.SCIP_RETCODE) {
 func GoNodeselSelect(scip *C.SCIP, nodesel *C.SCIP_NODESEL, selnode **C.SCIP_NODE) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "nodesel", uintptr(C.scipgo_nodeselId(nodesel)))
-	sel, ok := pluginAs[NodeSel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
+	sel, model, ok := pluginAs[NodeSel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
 	if !ok {
 		return
 	}
-	model := solvingModel(scip)
 	node := sel.Select(model)
 	if node != nil {
 		*selnode = node.raw
@@ -434,26 +449,24 @@ func GoNodeselSelect(scip *C.SCIP, nodesel *C.SCIP_NODESEL, selnode **C.SCIP_NOD
 //export GoNodeselComp
 func GoNodeselComp(scip *C.SCIP, nodesel *C.SCIP_NODESEL, node1, node2 *C.SCIP_NODE) (ret C.int) {
 	defer catchPanic(scip, "nodesel", uintptr(C.scipgo_nodeselId(nodesel)))
-	sel, ok := pluginAs[NodeSel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
+	sel, model, ok := pluginAs[NodeSel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
 	if !ok {
 		return 0
 	}
-	s := weakScip(scip)
-	ret = C.int(sel.Comp(s.newNode(node1), s.newNode(node2)))
+	ret = C.int(sel.Comp(model.scip.newNode(node1), model.scip.newNode(node2)))
 	return
 }
 
 // ------------------------------------------------------------------- pricer
 
 func callPricer(scip *C.SCIP, pricer *C.SCIP_PRICER, lowerbound *C.double, stopearly *C.uint, result *C.SCIP_RESULT, farkas bool) C.SCIP_RETCODE {
-	p, ok := pluginAs[Pricer](scip, uintptr(C.scipgo_pricerId(pricer)))
+	p, model, ok := pluginAs[Pricer](scip, uintptr(C.scipgo_pricerId(pricer)))
 	if !ok {
 		return C.SCIP_ERROR
 	}
 
 	nVarsBefore := C.SCIPgetNVars(scip)
 
-	model := solvingModel(scip)
 	res := p.GenerateColumns(model, PricerPlugin{raw: pricer, scip: model.scip}, farkas)
 
 	if !farkas {
@@ -558,13 +571,12 @@ func GoHeurCopy(scip *C.SCIP, heur *C.SCIP_HEUR) (ret C.SCIP_RETCODE) {
 func GoHeurExec(scip *C.SCIP, heur *C.SCIP_HEUR, heurtiming C.SCIP_HEURTIMING, nodeinfeasible C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "heuristic", uintptr(C.scipgo_heurId(heur)))
-	h, ok := pluginAs[Heuristic](scip, uintptr(C.scipgo_heurId(heur)))
+	h, model, ok := pluginAs[Heuristic](scip, uintptr(C.scipgo_heurId(heur)))
 	if !ok {
 		return
 	}
 
 	currentNSols := C.SCIPgetNSols(scip)
-	model := solvingModel(scip)
 	heurRes := h.Execute(model, heurTimingFromC(uint32(heurtiming)), nodeinfeasible != 0)
 	if heurRes == HeurResultFoundSol {
 		newNSols := C.SCIPgetNSols(scip)
@@ -615,12 +627,11 @@ func GoSepaCopy(scip *C.SCIP, sepa *C.SCIP_SEPA) (ret C.SCIP_RETCODE) {
 func GoSepaExecLp(scip *C.SCIP, sepa *C.SCIP_SEPA, result *C.SCIP_RESULT, allowlocal C.uint, depth C.int) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "separator", uintptr(C.scipgo_sepaId(sepa)))
-	s, ok := pluginAs[Separator](scip, uintptr(C.scipgo_sepaId(sepa)))
+	s, model, ok := pluginAs[Separator](scip, uintptr(C.scipgo_sepaId(sepa)))
 	if !ok {
 		return
 	}
 
-	model := solvingModel(scip)
 	sepRes := s.ExecuteLP(model, SeparatorPlugin{raw: sepa, scip: model.scip})
 	*result = separationResultToC(sepRes)
 	ret = C.SCIP_OKAY
@@ -675,11 +686,10 @@ func GoConsCopy(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, valid *C.uint) (ret C.S
 func GoConsEnfops(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nconss C.int, nusefulconss C.int, solinfeasible C.uint, objinfeasible C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
-	c, ok := pluginAs[ConshdlrEnfoPS](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
+	c, model, ok := pluginAs[ConshdlrEnfoPS](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
 	if !ok {
 		return
 	}
-	model := solvingModel(scip)
 	*result = conshdlrResultToC(c.EnforcePseudo(model, ConshdlrPlugin{raw: conshdlr, scip: model.scip},
 		solinfeasible != 0, objinfeasible != 0))
 	ret = C.SCIP_OKAY
@@ -690,11 +700,10 @@ func GoConsEnfops(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, 
 func GoConsSepalp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nconss C.int, nusefulconss C.int, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
-	c, ok := pluginAs[ConshdlrSepa](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
+	c, model, ok := pluginAs[ConshdlrSepa](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
 	if !ok {
 		return
 	}
-	model := solvingModel(scip)
 	*result = separationResultToC(c.SeparateLP(model, ConshdlrPlugin{raw: conshdlr, scip: model.scip}))
 	ret = C.SCIP_OKAY
 	return
@@ -704,11 +713,10 @@ func GoConsSepalp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, 
 func GoConsProp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nconss C.int, nusefulconss C.int, nmarkedconss C.int, proptiming C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
-	c, ok := pluginAs[ConshdlrProp](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
+	c, model, ok := pluginAs[ConshdlrProp](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
 	if !ok {
 		return
 	}
-	model := solvingModel(scip)
 	*result = propResultToC(c.Propagate(model, ConshdlrPlugin{raw: conshdlr, scip: model.scip}))
 	ret = C.SCIP_OKAY
 	return
@@ -718,11 +726,10 @@ func GoConsProp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nc
 func GoConsEnfolp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nconss C.int, nusefulconss C.int, solinfeasible C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
-	c, ok := pluginAs[Conshdlr](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
+	c, model, ok := pluginAs[Conshdlr](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
 	if !ok {
 		return
 	}
-	model := solvingModel(scip)
 	*result = conshdlrResultToC(c.Enforce(model, ConshdlrPlugin{raw: conshdlr, scip: model.scip}))
 	ret = C.SCIP_OKAY
 	return
@@ -732,13 +739,11 @@ func GoConsEnfolp(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, 
 func GoConsCheck(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR, conss **C.SCIP_CONS, nconss C.int, sol *C.SCIP_SOL, checkintegrality C.uint, checklprows C.uint, printreason C.uint, completely C.uint, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
-	c, ok := pluginAs[Conshdlr](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
+	c, model, ok := pluginAs[Conshdlr](scip, uintptr(C.scipgo_conshdlrId(conshdlr)))
 	if !ok {
 		return
 	}
-	s := weakScip(scip)
-	model := Model{scip: s}
-	solution := s.newSol(sol)
+	solution := model.scip.newSol(sol)
 
 	feasible := c.Check(model, ConshdlrPlugin{raw: conshdlr, scip: model.scip}, solution)
 	if feasible {
