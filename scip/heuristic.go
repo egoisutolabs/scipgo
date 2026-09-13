@@ -7,76 +7,78 @@ import "C"
 
 import "runtime"
 
-// HeurPlugin is a primal heuristic that is part of the model, giving access to its
+// HeuristicPlugin is a primal heuristic that is part of the model, giving access to its
 // runtime statistics (how often it ran and how many solutions it found).
-// Obtain one via Model.FindHeur.
-type HeurPlugin struct {
+// Obtain one via Model.FindHeuristic.
+type HeuristicPlugin struct {
 	raw  *C.SCIP_HEUR
 	scip *Scip // keeps the owning instance alive and identifies it
 }
 
 // live panics with *Error unless the wrapper is usable; see handleErr.
-func (h HeurPlugin) live(op string) { mustLive(op, "HeurPlugin", h.raw != nil, h.scip, genNone, true) }
+func (h HeuristicPlugin) live(op string) {
+	mustLive(op, "HeuristicPlugin", h.raw != nil, h.scip, genNone, true)
+}
 
 // Inner returns a pointer to the underlying SCIP_HEUR.
-func (h HeurPlugin) Inner() *C.SCIP_HEUR { return h.raw }
+func (h HeuristicPlugin) Inner() *C.SCIP_HEUR { return h.raw }
 
 // Name returns the name of the heuristic.
-func (h HeurPlugin) Name() string {
+func (h HeuristicPlugin) Name() string {
 	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	h.live("HeurPlugin.Name")
+	h.live("HeuristicPlugin.Name")
 	return goString(C.SCIPheurGetName(h.raw))
 }
 
 // Desc returns the description of the heuristic.
-func (h HeurPlugin) Desc() string {
+func (h HeuristicPlugin) Desc() string {
 	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	h.live("HeurPlugin.Desc")
+	h.live("HeuristicPlugin.Desc")
 	return goString(C.SCIPheurGetDesc(h.raw))
 }
 
 // Priority returns the priority of the heuristic.
-func (h HeurPlugin) Priority() int32 {
+func (h HeuristicPlugin) Priority() int32 {
 	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	h.live("HeurPlugin.Priority")
+	h.live("HeuristicPlugin.Priority")
 	return int32(C.SCIPheurGetPriority(h.raw))
 }
 
 // Freq returns the calling frequency of the heuristic; -1 means disabled.
-func (h HeurPlugin) Freq() int32 {
+func (h HeuristicPlugin) Freq() int32 {
 	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	h.live("HeurPlugin.Freq")
+	h.live("HeuristicPlugin.Freq")
 	return int32(C.SCIPheurGetFreq(h.raw))
 }
 
 // SetFreq sets the calling frequency of the heuristic; -1 disables it.
-func (h HeurPlugin) SetFreq(freq int32) {
+func (h HeuristicPlugin) SetFreq(freq int32) {
 	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	h.live("HeurPlugin.SetFreq")
+	h.live("HeuristicPlugin.SetFreq")
 	C.SCIPheurSetFreq(h.raw, C.int(freq))
 }
 
 // NCalls returns the number of times the heuristic was called during the
 // solving process.
-func (h HeurPlugin) NCalls() int {
+func (h HeuristicPlugin) NCalls() int {
 	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	h.live("HeurPlugin.NCalls")
+	h.live("HeuristicPlugin.NCalls")
 	return int(C.SCIPheurGetNCalls(h.raw))
 }
 
 // NSolsFound returns the number of solutions the heuristic found during the
 // solving process.
-func (h HeurPlugin) NSolsFound() int {
+func (h HeuristicPlugin) NSolsFound() int {
 	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	h.live("HeurPlugin.NSolsFound")
+	h.live("HeuristicPlugin.NSolsFound")
 	return int(C.SCIPheurGetNSolsFound(h.raw))
 }
 
 // NBestSolsFound returns the number of new best (incumbent) solutions the
 // heuristic found during the solving process.
-func (h HeurPlugin) NBestSolsFound() int {
+func (h HeuristicPlugin) NBestSolsFound() int {
 	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	h.live("HeurPlugin.NBestSolsFound")
+	h.live("HeuristicPlugin.NBestSolsFound")
 	return int(C.SCIPheurGetNBestSolsFound(h.raw))
 }
 

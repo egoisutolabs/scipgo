@@ -109,8 +109,8 @@ func (n Node) TryChildren() ([]Node, error) {
 		return nil, err
 	}
 	children := make([]Node, 0, numChildren)
-	for i := 0; i < numChildren; i++ {
-		children = append(children, n.scip.newNode(cNodeAt(childNodesPtr, i)))
+	for _, raw := range cSlice(childNodesPtr, numChildren) {
+		children = append(children, n.scip.newNode(raw))
 	}
 	return children, nil
 }
@@ -121,6 +121,21 @@ func cAt[T any](p *T, i int) T {
 	return *(*T)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + uintptr(i)*unsafe.Sizeof(*p)))
 }
 
+// cSlice reads the n elements of a C array, given a pointer to its first
+// element. It always returns a non-nil slice, empty when n is 0; callers
+// that document nil for "nothing here" (Node.TryChildren outside the solving
+// stages) return before the walk.
+func cSlice[T any](p *T, n int) []T {
+	if n < 0 {
+		n = 0
+	}
+	out := make([]T, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, cAt(p, i))
+	}
+	return out
+}
+
 // cVarAt returns the i-th SCIP_VAR* in a C array of variable pointers.
 func cVarAt(arr **C.SCIP_VAR, i int) *C.SCIP_VAR { return cAt(arr, i) }
 
@@ -129,9 +144,6 @@ func cConsAt(arr **C.SCIP_CONS, i int) *C.SCIP_CONS { return cAt(arr, i) }
 
 // cNodeAt returns the i-th SCIP_NODE* in a C array of node pointers.
 func cNodeAt(arr **C.SCIP_NODE, i int) *C.SCIP_NODE { return cAt(arr, i) }
-
-// cSolAt returns the i-th SCIP_SOL* in a C array of solution pointers.
-func cSolAt(arr **C.SCIP_SOL, i int) *C.SCIP_SOL { return cAt(arr, i) }
 
 // cColAt returns the i-th SCIP_COL* in a C array of column pointers.
 func cColAt(arr **C.SCIP_COL, i int) *C.SCIP_COL { return cAt(arr, i) }

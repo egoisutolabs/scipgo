@@ -36,7 +36,7 @@ func queryCalls(m Model) map[string]func() {
 		"NLpIterations": func() { m.NLpIterations() }, "NSols": func() { m.NSols() }, "GetSols": func() { m.GetSols() },
 		"BestSol": func() { m.BestSol() }, "FocusNode": func() { m.FocusNode() }, "LpObjVal": func() { m.LpObjVal() },
 		"LpStatus": func() { m.LpStatus() }, "VarInProb": func() { m.VarInProb(0) }, "Eps": func() { m.Eps() },
-		"Eq": func() { m.Eq(1, 1) }, "Heurs": func() { m.Heurs() }, "FindHeur": func() { m.FindHeur("x") },
+		"Eq": func() { m.Eq(1, 1) }, "Heuristics": func() { m.Heuristics() }, "FindHeuristic": func() { m.FindHeuristic("x") },
 		"Separators": func() { m.Separators() }, "Presolvers": func() { m.Presolvers() }, "PrintVersion": m.PrintVersion,
 		"BestNode": func() { m.BestNode() }, "Leaves": func() { m.Leaves() }, "InProbing": func() { InProbing(m) },
 		"InDive": func() { InDive(m) },
@@ -57,7 +57,7 @@ func TestQueriesInInitStageDoNotAbort(t *testing.T) {
 	defer m.Free()
 	// legal in every stage
 	for name, f := range map[string]func(){"Status": func() { m.Status() }, "Eps": func() { m.Eps() },
-		"Heurs": func() { m.Heurs() }, "InProbing": func() { InProbing(m) }, "InDive": func() { InDive(m) }} {
+		"Heuristics": func() { m.Heuristics() }, "InProbing": func() { InProbing(m) }, "InDive": func() { InDive(m) }} {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -245,7 +245,7 @@ func (h *keepingHeur) Execute(model Model, _ HeurTiming, _ bool) HeurResult {
 func TestCallbackHandlesDieWithModel(t *testing.T) {
 	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
 	h := &keepingHeur{}
-	m.Add(NewHeur(h).Name("keeper"))
+	m.Add(NewHeuristic(h).Name("keeper"))
 	m.Solve()
 	if h.model == nil {
 		t.Fatal("heuristic never ran")
@@ -271,13 +271,13 @@ func TestCallbackHandlesDieWithModel(t *testing.T) {
 
 func TestPluginWrappersOnFreedModel(t *testing.T) {
 	m := NewModel().HideOutput().IncludeDefaultPlugins()
-	hs := m.Heurs()
+	hs := m.Heuristics()
 	sep, _ := m.FindSeparator("gomory")
 	m.Free()
-	expectErrorPanic(t, "HeurPlugin.Name", RetcodeInvalidCall, func() { hs[0].Name() })
-	expectErrorPanic(t, "HeurPlugin.SetFreq", RetcodeInvalidCall, func() { hs[0].SetFreq(1) })
+	expectErrorPanic(t, "HeuristicPlugin.Name", RetcodeInvalidCall, func() { hs[0].Name() })
+	expectErrorPanic(t, "HeuristicPlugin.SetFreq", RetcodeInvalidCall, func() { hs[0].SetFreq(1) })
 	expectErrorPanic(t, "SeparatorPlugin.Freq", RetcodeInvalidCall, func() { sep.Freq() })
-	expectErrorPanic(t, "zero HeurPlugin", RetcodeInvalidData, func() { (HeurPlugin{}).Name() })
+	expectErrorPanic(t, "zero HeuristicPlugin", RetcodeInvalidData, func() { (HeuristicPlugin{}).Name() })
 }
 
 type childrenProbe struct {
@@ -306,7 +306,7 @@ func (p *childrenProbe) Execute(model Model, _ HeurTiming, _ bool) HeurResult {
 func TestChildrenOnlyForFocusNodeAndSolvingGetters(t *testing.T) {
 	probe := &childrenProbe{}
 	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("gen-ip054.mps"))
-	m.Add(NewHeur(probe).Name("probe").Timing(HeurTimingBeforeNode).Freq(1))
+	m.Add(NewHeuristic(probe).Name("probe").Timing(HeurTimingBeforeNode).Freq(1))
 	m, _ = m.SetIntParam("lp/solvefreq", 0) // no node LPs below the root: exercises the no-LP Redcost path
 	m, _ = m.SetLongintParam("limits/nodes", 20)
 	m.Solve()
@@ -332,7 +332,7 @@ func TestModelsAreCollectable(t *testing.T) {
 	collectable("plugin keeps callback handles", func() *Scip {
 		m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
 		h := &keepingHeur{}
-		m.Add(NewHeur(h).Name("keeper"))
+		m.Add(NewHeuristic(h).Name("keeper"))
 		m.Solve()
 		if h.model == nil {
 			t.Fatal("heuristic never ran")
@@ -382,7 +382,7 @@ func TestNodeChildrenAfterSolve(t *testing.T) {
 	k := &nodeKeeper{}
 	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
 	defer m.Free()
-	m.Add(NewHeur(k).Name("keeper"))
+	m.Add(NewHeuristic(k).Name("keeper"))
 	solved := m.Solve()
 	if k.n == nil || solved.Stage() != StageSolved {
 		t.Fatalf("keeper=%v stage=%v", k.n, solved.Stage())
@@ -440,7 +440,7 @@ func TestBacktrackToCurrentDepthIsNoop(t *testing.T) {
 	})
 	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
 	defer m.Free()
-	m.Add(NewHeur(probe).Name("bt"))
+	m.Add(NewHeuristic(probe).Name("bt"))
 	m.Solve()
 	if !checked.Load() {
 		t.Fatal("probing never ran")

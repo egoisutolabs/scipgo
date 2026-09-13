@@ -119,5 +119,5 @@ func (s SeparatorPlugin) CreateEmptyRow(model Model, name string, lhs, rhs float
 	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	s.live("SeparatorPlugin.CreateEmptyRow")
 	return NewRow().Name(name).Bounds(lhs, rhs).Local(local).Modifiable(modifiable).Removable(removable).
-		Source(SourceSepa(s)).TryAddTo(model)
+		Source(SourceSeparator(s)).TryAddTo(model)
 }

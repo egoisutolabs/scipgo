@@ -158,7 +158,7 @@ func main() {
 	model.AddConsSetPart([]scip.Variable{x2, x3, x6}, "set3")
 
 	// Add our clique separator
-	model.Add(scip.NewSepa(&cliqueSeparator{fracThreshold: 0.1}).
+	model.Add(scip.NewSeparator(&cliqueSeparator{fracThreshold: 0.1}).
 		Name("clique_separator").
 		Desc("Clique separator for set partitioning problems"))
 

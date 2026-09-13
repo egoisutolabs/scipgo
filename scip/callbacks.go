@@ -427,7 +427,7 @@ func GoNodeselFree(scip *C.SCIP, nodesel *C.SCIP_NODESEL) (ret C.SCIP_RETCODE) {
 func GoNodeselCopy(scip *C.SCIP, nodesel *C.SCIP_NODESEL) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "nodesel", uintptr(C.scipgo_nodeselId(nodesel)))
-	ns, ok := pluginCopy[NodeSel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
+	ns, ok := pluginCopy[Nodesel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
 	if !ok {
 		return
 	}
@@ -444,7 +444,7 @@ func GoNodeselCopy(scip *C.SCIP, nodesel *C.SCIP_NODESEL) (ret C.SCIP_RETCODE) {
 func GoNodeselSelect(scip *C.SCIP, nodesel *C.SCIP_NODESEL, selnode **C.SCIP_NODE) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "nodesel", uintptr(C.scipgo_nodeselId(nodesel)))
-	sel, model, ok := pluginAs[NodeSel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
+	sel, model, ok := pluginAs[Nodesel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
 	if !ok {
 		return
 	}
@@ -461,7 +461,7 @@ func GoNodeselSelect(scip *C.SCIP, nodesel *C.SCIP_NODESEL, selnode **C.SCIP_NOD
 //export GoNodeselComp
 func GoNodeselComp(scip *C.SCIP, nodesel *C.SCIP_NODESEL, node1, node2 *C.SCIP_NODE) (ret C.int) {
 	defer catchPanic(scip, "nodesel", uintptr(C.scipgo_nodeselId(nodesel)))
-	sel, model, ok := pluginAs[NodeSel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
+	sel, model, ok := pluginAs[Nodesel](scip, uintptr(C.scipgo_nodeselId(nodesel)))
 	if !ok {
 		return 0
 	}

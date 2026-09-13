@@ -82,7 +82,7 @@ func TestCreatePartialSol(t *testing.T) {
 		if solved.Status() != StatusOptimal {
 			t.Fatalf("got status %v", solved.Status())
 		}
-		completesol, ok := solved.FindHeur("completesol")
+		completesol, ok := solved.FindHeuristic("completesol")
 		if !ok {
 			t.Fatal("completesol heuristic not found")
 		}

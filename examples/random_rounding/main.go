@@ -89,7 +89,7 @@ func main() {
 		SetSeparating(scip.ParamSettingOff)
 
 	// Add our random rounding heuristic
-	model.Add(scip.NewHeur(&randomRoundingHeur{}).
+	model.Add(scip.NewHeuristic(&randomRoundingHeur{}).
 		Name("random_round").
 		Desc("Random rounding at LP solutions").
 		Priority(1000).

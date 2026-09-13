@@ -18,7 +18,7 @@ import (
 func TestEveryNativeCallKeepsItsOwnerAlive(t *testing.T) {
 	receivers := map[string]bool{"Scip": true, "Model": true, "Variable": true, "Constraint": true, "Solution": true,
 		"Node": true, "Row": true, "Col": true, "Prober": true, "Diver": true, "BranchRulePlugin": true,
-		"ConshdlrPlugin": true, "EventhdlrPlugin": true, "HeurPlugin": true, "NodeselPlugin": true,
+		"ConshdlrPlugin": true, "EventhdlrPlugin": true, "HeuristicPlugin": true, "NodeselPlugin": true,
 		"PricerPlugin": true, "PresolverPlugin": true, "SeparatorPlugin": true}
 	files, _ := filepath.Glob("*.go")
 	for _, file := range files {

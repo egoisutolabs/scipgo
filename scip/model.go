@@ -420,27 +420,26 @@ func (m Model) FreeTransform() Model {
 
 // ------------------------------------------------------------- plugins
 
-// FindHeur finds a primal heuristic by its name (e.g. "completesol"), giving
+// FindHeuristic finds a primal heuristic by its name (e.g. "completesol"), giving
 // access to its runtime statistics.
-func (m Model) FindHeur(name string) (HeurPlugin, bool) {
+func (m Model) FindHeuristic(name string) (HeuristicPlugin, bool) {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	must(m.guard("FindHeur"))
+	must(m.guard("FindHeuristic"))
 	raw := m.scip.findHeur(name)
 	if raw == nil {
-		return HeurPlugin{}, false
+		return HeuristicPlugin{}, false
 	}
-	return HeurPlugin{raw: raw, scip: m.scip}, true
+	return HeuristicPlugin{raw: raw, scip: m.scip}, true
 }
 
-// Heurs returns all primal heuristics included in the model.
-func (m Model) Heurs() []HeurPlugin {
+// Heuristics returns all primal heuristics included in the model.
+func (m Model) Heuristics() []HeuristicPlugin {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	must(m.guard("Heurs"))
+	must(m.guard("Heuristics"))
 	n := int(C.SCIPgetNHeurs(m.scip.raw))
-	arr := C.SCIPgetHeurs(m.scip.raw)
-	out := make([]HeurPlugin, 0, n)
-	for i := 0; i < n; i++ {
-		out = append(out, HeurPlugin{raw: cAt(arr, i), scip: m.scip})
+	out := make([]HeuristicPlugin, 0, n)
+	for _, raw := range cSlice(C.SCIPgetHeurs(m.scip.raw), n) {
+		out = append(out, HeuristicPlugin{raw: raw, scip: m.scip})
 	}
 	return out
 }
@@ -450,10 +449,9 @@ func (m Model) Separators() []SeparatorPlugin {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.guard("Separators"))
 	n := int(C.SCIPgetNSepas(m.scip.raw))
-	arr := C.SCIPgetSepas(m.scip.raw)
 	out := make([]SeparatorPlugin, 0, n)
-	for i := 0; i < n; i++ {
-		out = append(out, SeparatorPlugin{raw: cAt(arr, i), scip: m.scip})
+	for _, raw := range cSlice(C.SCIPgetSepas(m.scip.raw), n) {
+		out = append(out, SeparatorPlugin{raw: raw, scip: m.scip})
 	}
 	return out
 }
@@ -474,10 +472,9 @@ func (m Model) Presolvers() []PresolverPlugin {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	must(m.guard("Presolvers"))
 	n := int(C.SCIPgetNPresols(m.scip.raw))
-	arr := C.SCIPgetPresols(m.scip.raw)
 	out := make([]PresolverPlugin, 0, n)
-	for i := 0; i < n; i++ {
-		out = append(out, PresolverPlugin{raw: cAt(arr, i), scip: m.scip})
+	for _, raw := range cSlice(C.SCIPgetPresols(m.scip.raw), n) {
+		out = append(out, PresolverPlugin{raw: raw, scip: m.scip})
 	}
 	return out
 }
@@ -505,53 +502,55 @@ func (m Model) FindNodesel(name string) (NodeselPlugin, bool) {
 	return NodeselPlugin{raw: raw, scip: m.scip}, true
 }
 
-// TrySetHeurPriority sets the priority of a primal heuristic.
-func (m Model) TrySetHeurPriority(h HeurPlugin, priority int32) error {
+// TrySetHeuristicPriority sets the priority of a primal heuristic.
+func (m Model) TrySetHeuristicPriority(h HeuristicPlugin, priority int32) error {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	if err := m.guard("SetHeurPriority"); err != nil {
+	if err := m.guard("SetHeuristicPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetHeurPriority", "HeurPlugin", h.raw != nil, h.scip, genNone, true); err != nil {
+	if err := m.checkHandle("SetHeuristicPriority", "HeuristicPlugin", h.raw != nil, h.scip, genNone, true); err != nil {
 		return err
 	}
-	return m.call("SetHeurPriority", C.SCIPsetHeurPriority(m.scip.raw, h.raw, C.int(priority)))
+	return m.call("SetHeuristicPriority", C.SCIPsetHeurPriority(m.scip.raw, h.raw, C.int(priority)))
 }
 
-// SetHeurPriority sets the priority of a primal heuristic. It panics on failure.
-func (m Model) SetHeurPriority(h HeurPlugin, priority int32) { must(m.TrySetHeurPriority(h, priority)) }
+// SetHeuristicPriority sets the priority of a primal heuristic. It panics on failure.
+func (m Model) SetHeuristicPriority(h HeuristicPlugin, priority int32) {
+	must(m.TrySetHeuristicPriority(h, priority))
+}
 
-// TrySetSepaPriority sets the priority of a separator.
-func (m Model) TrySetSepaPriority(s SeparatorPlugin, priority int32) error {
+// TrySetSeparatorPriority sets the priority of a separator.
+func (m Model) TrySetSeparatorPriority(s SeparatorPlugin, priority int32) error {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	if err := m.guard("SetSepaPriority"); err != nil {
+	if err := m.guard("SetSeparatorPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetSepaPriority", "SeparatorPlugin", s.raw != nil, s.scip, genNone, true); err != nil {
+	if err := m.checkHandle("SetSeparatorPriority", "SeparatorPlugin", s.raw != nil, s.scip, genNone, true); err != nil {
 		return err
 	}
-	return m.call("SetSepaPriority", C.SCIPsetSepaPriority(m.scip.raw, s.raw, C.int(priority)))
+	return m.call("SetSeparatorPriority", C.SCIPsetSepaPriority(m.scip.raw, s.raw, C.int(priority)))
 }
 
-// SetSepaPriority sets the priority of a separator. It panics on failure.
-func (m Model) SetSepaPriority(s SeparatorPlugin, priority int32) {
-	must(m.TrySetSepaPriority(s, priority))
+// SetSeparatorPriority sets the priority of a separator. It panics on failure.
+func (m Model) SetSeparatorPriority(s SeparatorPlugin, priority int32) {
+	must(m.TrySetSeparatorPriority(s, priority))
 }
 
-// TrySetPresolPriority sets the priority of a presolver.
-func (m Model) TrySetPresolPriority(p PresolverPlugin, priority int32) error {
+// TrySetPresolverPriority sets the priority of a presolver.
+func (m Model) TrySetPresolverPriority(p PresolverPlugin, priority int32) error {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	if err := m.guard("SetPresolPriority"); err != nil {
+	if err := m.guard("SetPresolverPriority"); err != nil {
 		return err
 	}
-	if err := m.checkHandle("SetPresolPriority", "PresolverPlugin", p.raw != nil, p.scip, genNone, true); err != nil {
+	if err := m.checkHandle("SetPresolverPriority", "PresolverPlugin", p.raw != nil, p.scip, genNone, true); err != nil {
 		return err
 	}
-	return m.call("SetPresolPriority", C.SCIPsetPresolPriority(m.scip.raw, p.raw, C.int(priority)))
+	return m.call("SetPresolverPriority", C.SCIPsetPresolPriority(m.scip.raw, p.raw, C.int(priority)))
 }
 
-// SetPresolPriority sets the priority of a presolver. It panics on failure.
-func (m Model) SetPresolPriority(p PresolverPlugin, priority int32) {
-	must(m.TrySetPresolPriority(p, priority))
+// SetPresolverPriority sets the priority of a presolver. It panics on failure.
+func (m Model) SetPresolverPriority(p PresolverPlugin, priority int32) {
+	must(m.TrySetPresolverPriority(p, priority))
 }
 
 // TryIncludeBranchRule includes a new branch rule in the model.
@@ -573,7 +572,7 @@ func (m Model) IncludeBranchRule(name, desc string, priority, maxdepth int32, ma
 }
 
 // TryIncludeNodesel includes a new node selector in the model.
-func (m Model) TryIncludeNodesel(name, desc string, stdPriority, memSavePriority int32, nodesel NodeSel) error {
+func (m Model) TryIncludeNodesel(name, desc string, stdPriority, memSavePriority int32, nodesel Nodesel) error {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("IncludeNodesel"); err != nil {
 		return err
@@ -585,7 +584,7 @@ func (m Model) TryIncludeNodesel(name, desc string, stdPriority, memSavePriority
 }
 
 // IncludeNodesel includes a new node selector in the model. It panics on failure.
-func (m Model) IncludeNodesel(name, desc string, stdPriority, memSavePriority int32, nodesel NodeSel) {
+func (m Model) IncludeNodesel(name, desc string, stdPriority, memSavePriority int32, nodesel Nodesel) {
 	must(m.TryIncludeNodesel(name, desc, stdPriority, memSavePriority, nodesel))
 }
 
@@ -696,13 +695,13 @@ func (m Model) TryAdd(items ...any) error {
 			err = b.TryAddTo(m)
 		case PricerBuilder:
 			err = b.TryAddTo(m)
-		case EventHdlrBuilder:
+		case EventhdlrBuilder:
 			err = b.TryAddTo(m)
-		case HeurBuilder:
+		case HeuristicBuilder:
 			err = b.TryAddTo(m)
-		case SepaBuilder:
+		case SeparatorBuilder:
 			err = b.TryAddTo(m)
-		case NodeSelBuilder:
+		case NodeselBuilder:
 			err = b.TryAddTo(m)
 		default:
 			err = m.invalid("Add", RetcodeInvalidData, fmt.Sprintf("cannot add a value of type %T", it))
