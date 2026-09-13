@@ -112,7 +112,7 @@ func (panickingHeur) Execute(Model, HeurTiming, bool) HeurResult { panic("boom")
 func TestCallbackPanicReturned(t *testing.T) {
 	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
 	defer m.Free()
-	m.Add(NewHeur(panickingHeur{}).Name("boom"))
+	m.Add(NewHeuristic(panickingHeur{}).Name("boom"))
 	_, err := m.TrySolve()
 	var cp *CallbackPanic
 	if !errors.As(err, &cp) {
@@ -130,7 +130,7 @@ func TestCallbackPanicReturned(t *testing.T) {
 func TestSolveStillPanicsOnCallbackPanic(t *testing.T) {
 	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
 	defer m.Free()
-	m.Add(NewHeur(panickingHeur{}).Name("boom"))
+	m.Add(NewHeuristic(panickingHeur{}).Name("boom"))
 	defer func() {
 		if _, ok := recover().(*CallbackPanic); !ok {
 			t.Fatal("Solve should panic with *CallbackPanic")
@@ -264,14 +264,14 @@ func TestZeroHandlesRejected(t *testing.T) {
 	x := m.Vars()[0]
 	c := m.Conss()[0]
 	cases := map[string]error{
-		"SetHeurPriority":   m.TrySetHeurPriority(HeurPlugin{}, 1),
-		"SetSepaPriority":   m.TrySetSepaPriority(SeparatorPlugin{}, 1),
-		"AddConsCoef cons":  m.TryAddConsCoef(Constraint{}, x, 1),
-		"AddConsCoef var":   m.TryAddConsCoef(c, Variable{}, 1),
-		"AddConsCoefSetppc": m.TryAddConsCoefSetppc(c, Variable{}),
-		"SetConsModifiable": m.TrySetConsModifiable(Constraint{}, true),
-		"AddCut":            func() error { _, e := m.TryAddCut(Row{}, false); return e }(),
-		"SetUbNode var":     m.TrySetUbNode(&Node{}, Variable{}, 0),
+		"SetHeuristicPriority": m.TrySetHeuristicPriority(HeuristicPlugin{}, 1),
+		"SetSeparatorPriority": m.TrySetSeparatorPriority(SeparatorPlugin{}, 1),
+		"AddConsCoef cons":     m.TryAddConsCoef(Constraint{}, x, 1),
+		"AddConsCoef var":      m.TryAddConsCoef(c, Variable{}, 1),
+		"AddConsCoefSetppc":    m.TryAddConsCoefSetppc(c, Variable{}),
+		"SetConsModifiable":    m.TrySetConsModifiable(Constraint{}, true),
+		"AddCut":               func() error { _, e := m.TryAddCut(Row{}, false); return e }(),
+		"SetUbNode var":        m.TrySetUbNode(&Node{}, Variable{}, 0),
 	}
 	for name, err := range cases {
 		if !errors.Is(err, RetcodeInvalidData) {
@@ -373,10 +373,10 @@ func TestEnumAndArgumentValidation(t *testing.T) {
 	if err := m.TryIncludeBranchRule("n", "", 1, -1, 1, nil); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("nil rule: %v", err)
 	}
-	if err := m.TryAdd(NewHeur(nil)); !errors.Is(err, RetcodeInvalidData) {
+	if err := m.TryAdd(NewHeuristic(nil)); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("nil heur: %v", err)
 	}
-	if _, err := NewRow().Source(SourceSepa(SeparatorPlugin{})).TryAddTo(m); !errors.Is(err, RetcodeInvalidData) {
+	if _, err := NewRow().Source(SourceSeparator(SeparatorPlugin{})).TryAddTo(m); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("zero row source: %v", err)
 	}
 }
@@ -400,7 +400,7 @@ func TestConsAddedWhileSolvingIsUsable(t *testing.T) {
 	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
 	defer m.Free()
 	h := solvingConsHeur{new(atomic.Bool), new(atomic.Bool)}
-	m.Add(NewHeur(h).Name("consadd").Freq(1))
+	m.Add(NewHeuristic(h).Name("consadd").Freq(1))
 	m.Solve()
 	if !h.consOK.Load() {
 		t.Fatal("constraint added during solving came back zero or unnamed")
@@ -418,8 +418,8 @@ func TestRoundFiveValidation(t *testing.T) {
 	if _, err := b.TryAddConsNonlinear(xa.Expr().Pow(2), 0, 1, "f"); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("foreign var in expr: %v", err)
 	}
-	ha, _ := a.FindHeur("rounding")
-	if err := b.TrySetHeurPriority(ha, 1); !errors.Is(err, RetcodeInvalidData) {
+	ha, _ := a.FindHeuristic("rounding")
+	if err := b.TrySetHeuristicPriority(ha, 1); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("foreign heur: %v", err)
 	}
 	for name, f := range map[string]func() (Model, error){
@@ -447,25 +447,25 @@ func TestPluginWrappersCheckOwnershipEverywhere(t *testing.T) {
 	defer a.Free()
 	defer b.Free()
 	sepA, _ := a.FindSeparator("gomory")
-	if _, err := NewRow().Source(SourceSepa(sepA)).TryAddTo(b); asError(t, err).Detail != "SeparatorPlugin belongs to another model" {
+	if _, err := NewRow().Source(SourceSeparator(sepA)).TryAddTo(b); asError(t, err).Detail != "SeparatorPlugin belongs to another model" {
 		t.Fatalf("row source: %v", err)
 	}
 	if _, err := sepA.CreateEmptyRow(b, "r", 0, 1, true, false, true); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("CreateEmptyRow foreign: %v", err)
 	}
-	if err := b.TrySetSepaPriority(sepA, 1); !errors.Is(err, RetcodeInvalidData) {
+	if err := b.TrySetSeparatorPriority(sepA, 1); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("priority foreign: %v", err)
 	}
 	pA, _ := a.FindPresolver("trivial")
-	if err := b.TrySetPresolPriority(pA, 1); !errors.Is(err, RetcodeInvalidData) {
+	if err := b.TrySetPresolverPriority(pA, 1); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("presol foreign: %v", err)
 	}
 }
 
 func TestPluginWrappersKeepModelAlive(t *testing.T) {
-	h := func() HeurPlugin {
+	h := func() HeuristicPlugin {
 		m := NewModel().HideOutput().IncludeDefaultPlugins()
-		h, _ := m.FindHeur("rounding")
+		h, _ := m.FindHeuristic("rounding")
 		return h // m goes out of scope; only h keeps the instance reachable
 	}()
 	for i := 0; i < 3; i++ {

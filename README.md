@@ -170,8 +170,8 @@ model.Add(scip.NewCons().Expression(x.Expr().Mul(y.Expr())).Coef(x, 2).Le(1))
 
 ## Plugins included by default
 
-`Heurs`, `Separators` and `Presolvers` list SCIP's built-in plugins;
-`FindHeur`, `FindSeparator` and `FindPresolver` look one up by name. Each
+`Heuristics`, `Separators` and `Presolvers` list SCIP's built-in plugins;
+`FindHeuristic`, `FindSeparator` and `FindPresolver` look one up by name. Each
 wrapper exposes its name and priority; heuristics and presolvers also report
 call statistics, and heuristics and separators have `SetFreq` so a plugin
 can be tuned or disabled without touching parameter strings.

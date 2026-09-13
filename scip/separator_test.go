@@ -16,7 +16,7 @@ func TestNotRunningSeparator(t *testing.T) {
 	}
 	model = model.HideOutput().IncludeDefaultPlugins()
 	model = mustRead(t, model, testFile("gen-ip054.mps"))
-	model.Add(NewSepa(notRunningSeparator{}).
+	model.Add(NewSeparator(notRunningSeparator{}).
 		Name("NotRunningSeparator").
 		Desc("Does not run the separation routine"))
 	model.Solve()
@@ -39,7 +39,7 @@ func TestConsAddingSeparator(t *testing.T) {
 	x := model.AddVar(0, 1, 1, "x", VarTypeBinary)
 	y := model.AddVar(0, 1, 1, "y", VarTypeBinary)
 	model.AddCons([]Variable{x, y}, []float64{1, 1}, 1, 1, "cons1")
-	model.Add(NewSepa(consAddingSeparator{}).
+	model.Add(NewSeparator(consAddingSeparator{}).
 		Name("ConsAddingSeparator").
 		Desc("Adds a constraint to the model"))
 	solved := model.Solve()
@@ -64,7 +64,7 @@ func (s internalSeparatorDataTester) ExecuteLP(model Model, sep SeparatorPlugin)
 		Local(false).
 		Modifiable(true).
 		Name("test").
-		Source(SourceSepa(sep)).
+		Source(SourceSeparator(sep)).
 		AddTo(model)
 	if row.Name() != "test" || row.Lhs() != 0 || row.Rhs() != 1 {
 		s.t.Error("wrong row name/bounds")
@@ -86,7 +86,7 @@ func TestInternalScipSeparator(t *testing.T) {
 	}
 	model = model.HideOutput().IncludeDefaultPlugins()
 	model = mustRead(t, model, testFile("gen-ip054.mps"))
-	model.Add(NewSepa(internalSeparatorDataTester{t: t}).
+	model.Add(NewSeparator(internalSeparatorDataTester{t: t}).
 		Name("InternalSeparatorDataTester").
 		Desc("Internal separator data tester").
 		Priority(1000000).
@@ -106,7 +106,7 @@ func (c cutsAddingSeparator) ExecuteLP(model Model, sep SeparatorPlugin) Separat
 		Local(true).
 		Modifiable(false).
 		Removable(false).
-		Source(SourceSepa(sep)).
+		Source(SourceSeparator(sep)).
 		AddTo(model)
 	if row.Lhs() != 5 || row.Rhs() != 5 {
 		c.t.Error("wrong row bounds")
@@ -136,7 +136,7 @@ func TestCutsAdding(t *testing.T) {
 	x := model.AddVar(0, 1, 1, "x", VarTypeBinary)
 	y := model.AddVar(0, 1, 1, "y", VarTypeBinary)
 	model.AddCons([]Variable{x, y}, []float64{1, 1}, 1, 1, "cons1")
-	model.Add(NewSepa(cutsAddingSeparator{t: t}).
+	model.Add(NewSeparator(cutsAddingSeparator{t: t}).
 		Name("CutsAddingSeparator").
 		Desc("Adds a cut to the model"))
 	solved := model.Solve()

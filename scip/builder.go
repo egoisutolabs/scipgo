@@ -332,8 +332,8 @@ type RowSource struct {
 	constraint        *Constraint
 }
 
-// SourceSepa marks the row as coming from a separator.
-func SourceSepa(sep SeparatorPlugin) RowSource { return RowSource{separator: &sep} }
+// SourceSeparator marks the row as coming from a separator.
+func SourceSeparator(sep SeparatorPlugin) RowSource { return RowSource{separator: &sep} }
 
 // SourceConshdlr marks the row as coming from a constraint handler.
 func SourceConshdlr(ch ConshdlrPlugin) RowSource { return RowSource{constraintHandler: &ch} }

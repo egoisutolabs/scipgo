@@ -7,14 +7,14 @@ import "C"
 
 import "runtime"
 
-// NodeSel is the interface for defining custom node selectors.
+// Nodesel is the interface for defining custom node selectors.
 //
 // A node selector decides which of the currently open (leaf) nodes of the
 // branch-and-bound tree should be processed next:
 //   - Select picks the next node to be processed, and
 //   - Comp defines a total order on the open nodes (-1, 0, or +1), which SCIP
 //     uses to keep its internal node queue sorted.
-type NodeSel interface {
+type Nodesel interface {
 	// Select selects the next node to be processed. Return nil to let SCIP
 	// fall back to the node with the best Comp ranking.
 	Select(model Model) *Node

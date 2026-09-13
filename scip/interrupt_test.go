@@ -133,7 +133,7 @@ func (h *interruptingHeur) Execute(model Model, timing HeurTiming, nodeInf bool)
 func TestInterruptFromCallback(t *testing.T) {
 	model := hardTestModel(t)
 	h := &interruptingHeur{}
-	model.Add(NewHeur(h).Name("stopper"))
+	model.Add(NewHeuristic(h).Name("stopper"))
 
 	solved := model.Solve()
 	if !h.done.Load() {

@@ -833,12 +833,7 @@ func (s *Scip) getSols() []*C.SCIP_SOL {
 	if n == 0 {
 		return nil
 	}
-	scipSols := C.SCIPgetSols(s.raw)
-	out := make([]*C.SCIP_SOL, 0, n)
-	for i := 0; i < n; i++ {
-		out = append(out, cSolAt(scipSols, i))
-	}
-	return out
+	return cSlice(C.SCIPgetSols(s.raw), n)
 }
 
 func (s *Scip) objVal() float64 {
@@ -1503,7 +1498,7 @@ func (s *Scip) includeEventhdlr(name, desc string, eventhdlr Eventhdlr) error {
 	return includeResult(data, C.scipgo_includeEventhdlr(s.raw, cn, cd, cInt(isCopyable(eventhdlr)), C.uintptr_t(data)))
 }
 
-func (s *Scip) includeNodesel(name, desc string, stdPriority, memSavePriority int32, nodesel NodeSel) error {
+func (s *Scip) includeNodesel(name, desc string, stdPriority, memSavePriority int32, nodesel Nodesel) error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn, cd := cString(name), cString(desc)
 	defer func() { freeCString(cn); freeCString(cd) }()

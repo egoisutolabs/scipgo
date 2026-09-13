@@ -20,7 +20,7 @@
 // Sum, Product, Pow and friends build an Expr, and Model.AddConsNonlinear or
 // ConsBuilder.Expression adds it. ParseExpr accepts SCIP's own syntax.
 //
-// Custom plugins (BranchRule, Conshdlr, Eventhdlr, Heuristic, NodeSel,
+// Custom plugins (BranchRule, Conshdlr, Eventhdlr, Heuristic, Nodesel,
 // Pricer, Separator) are Go interfaces registered through Model.Add or the
 // Include* methods. A plugin that also implements Copyable is copied into the
 // sub-SCIPs SCIP creates for LNS heuristics and SolveConcurrent workers.
