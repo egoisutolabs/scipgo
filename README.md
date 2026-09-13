@@ -174,13 +174,16 @@ prints: `display/verblevel` still applies, and `HideOutput` silences
 everything before it reaches the sink.
 
 During a concurrent solve the handler is copied to the worker instances, so
-the callback can be invoked from several threads at once; it must be safe
-for concurrent use and must not call back into the model.
+the callback can be invoked from several threads at once. The sink's lock is
+held while the callback runs, so it must not call into SCIP — through any
+model — nor swap the sink: a nested message would wait for that lock
+forever.
 
 Error messages (`SCIPerrorMessage`) are not part of the message handler:
 they go through one process-global hook. `scip.SetErrorLogFunc(fn)` redirects
 them for the whole process — not per model — and passes fragments through
-unbuffered; `scip.SetErrorLogFunc(nil)` restores stderr.
+unbuffered; `scip.SetErrorLogFunc(nil)` restores stderr. The same
+no-calling-into-SCIP rule applies to fn.
 
 ## Nonlinear constraints
 

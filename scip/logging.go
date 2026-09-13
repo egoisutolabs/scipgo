@@ -156,12 +156,14 @@ func GoMessageHdlrFree(id C.uintptr_t) (ret C.SCIP_RETCODE) {
 // and allows the swap again. Routing does not change what SCIP decides to
 // print: display/verblevel still applies, and HideOutput silences everything
 // before it reaches fn. fn may be called from several threads during a
-// concurrent solve and must not call back into the model. Concurrent solves
-// share the one handler, and SCIP's callbacks carry no worker identity, so
-// lines emitted from different workers can interleave at fragment
-// granularity — one emitted line may be assembled from two workers'
-// fragments; SCIP's own default stdout handler mixes them the same way.
-// Passing nil restores SCIP's default stdout handler.
+// concurrent solve. The sink's lock is held while fn runs, so fn must not
+// call into SCIP — through any Model — nor swap the sink: a nested message
+// or error would wait for that lock forever. Concurrent solves share the one
+// handler, and SCIP's callbacks carry no worker identity, so lines emitted
+// from different workers can interleave at fragment granularity — one
+// emitted line may be assembled from two workers' fragments; SCIP's own
+// default stdout handler mixes them the same way. Passing nil restores
+// SCIP's default stdout handler.
 func (m Model) TrySetLogFunc(fn func(level LogLevel, line string)) error {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetLogFunc"); err != nil {
@@ -243,7 +245,9 @@ func GoErrorPrinting(msg *C.char) {
 // global to the process, to fn. Unlike the message channels, error messages
 // arrive as fragments and are passed through unchanged, without buffering.
 // Calls to fn are serialized against each other and against SetErrorLogFunc
-// itself, so fn must not call SetErrorLogFunc. Passing nil restores the
+// itself, and the serialization lock is held while fn runs — so fn must not
+// call into SCIP, through any Model, nor call SetErrorLogFunc: a nested
+// error message would wait for that lock forever. Passing nil restores the
 // default (stderr).
 func SetErrorLogFunc(fn func(line string)) {
 	// The whole transition — Go state and C hook — happens under one lock,
