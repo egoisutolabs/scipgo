@@ -121,7 +121,7 @@ func TestInterruptOnFreedModel(t *testing.T) {
 
 type interruptingHeur struct{ done atomic.Bool }
 
-func (h *interruptingHeur) Execute(model Model, timing HeurTiming, nodeInf bool) HeurResult {
+func (h *interruptingHeur) Execute(model Model, _ HeuristicPlugin, timing HeurTiming, nodeInf bool) HeurResult {
 	if !h.done.Swap(true) {
 		model.Interrupt()
 	}

@@ -67,7 +67,12 @@ func (h HeuristicPlugin) NCalls() int {
 }
 
 // NSolsFound returns the number of solutions the heuristic found during the
-// solving process.
+// solving process. SCIP credits the heuristic that is executing whenever a
+// solution is added during its Execute, whichever constructor created it and
+// whatever result Execute returns. Solutions added outside any heuristic's
+// execution — MIP-start seeds before Solve, for instance — count for no one.
+// The creator recorded on the solution itself is separate; see
+// Solution.Heuristic.
 func (h HeuristicPlugin) NSolsFound() int {
 	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h.live("HeuristicPlugin.NSolsFound")
@@ -75,7 +80,8 @@ func (h HeuristicPlugin) NSolsFound() int {
 }
 
 // NBestSolsFound returns the number of new best (incumbent) solutions the
-// heuristic found during the solving process.
+// heuristic found during the solving process, counted by the same rule as
+// NSolsFound.
 func (h HeuristicPlugin) NBestSolsFound() int {
 	defer runtime.KeepAlive(h.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	h.live("HeuristicPlugin.NBestSolsFound")
@@ -87,9 +93,13 @@ func (h HeuristicPlugin) NBestSolsFound() int {
 type Heuristic interface {
 	// Execute executes the heuristic.
 	//
+	// heur is the heuristic's own plugin wrapper, matching the other plugin
+	// interfaces; pass it to Model.CreateSolFor (and the orig/partial
+	// variants) so the solutions the heuristic creates record it as their
+	// creator; see Solution.Heuristic.
 	// timing is the timing mask of the heuristic's execution and nodeInf
 	// indicates whether the current node is infeasible.
-	Execute(model Model, timing HeurTiming, nodeInf bool) HeurResult
+	Execute(model Model, heur HeuristicPlugin, timing HeurTiming, nodeInf bool) HeurResult
 }
 
 // HeurResult is the result of a primal heuristic execution.

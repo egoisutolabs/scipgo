@@ -14,7 +14,7 @@ type randomRoundingHeur struct {
 	rng *rand.Rand
 }
 
-func (h *randomRoundingHeur) Execute(model scip.Model, _ scip.HeurTiming, nodeInf bool) scip.HeurResult {
+func (h *randomRoundingHeur) Execute(model scip.Model, heur scip.HeuristicPlugin, _ scip.HeurTiming, nodeInf bool) scip.HeurResult {
 	// Skip if the node is infeasible
 	if nodeInf {
 		return scip.HeurResultDidNotRun
@@ -22,8 +22,9 @@ func (h *randomRoundingHeur) Execute(model scip.Model, _ scip.HeurTiming, nodeIn
 
 	rng := rand.New(rand.NewSource(1))
 
-	// Create a new solution
-	sol := model.CreateSol()
+	// Create a new solution attributed to this heuristic, so SCIP counts
+	// and credits the solutions we find
+	sol := model.CreateSolFor(heur)
 	vars := model.Vars()
 
 	// Get current LP solution values; randomly round fractional integer
@@ -103,4 +104,10 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("solutions found:", solved.NSols())
+
+	// Attribution: the solutions we created through CreateSolFor count for
+	// the heuristic in SCIP's statistics
+	if rr, ok := solved.FindHeuristic("random_round"); ok {
+		fmt.Printf("random_round found %d solution(s), %d of them new best\n", rr.NSolsFound(), rr.NBestSolsFound())
+	}
 }

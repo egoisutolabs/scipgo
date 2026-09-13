@@ -16,13 +16,14 @@ func (m Model) sol(op string, raw *C.SCIP_SOL, err error) (Solution, error) {
 	return m.scip.newSol(raw), nil
 }
 
-// TryCreateSol creates a new solution initialized to zero.
+// TryCreateSol creates a new solution initialized to zero. The solution is
+// attributed to no heuristic; see TryCreateSolFor.
 func (m Model) TryCreateSol() (Solution, error) {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("CreateSol"); err != nil {
 		return Solution{}, err
 	}
-	raw, err := m.scip.createSol(false)
+	raw, err := m.scip.createSol(false, nil)
 	return m.sol("CreateSol", raw, err)
 }
 
@@ -33,13 +34,14 @@ func (m Model) CreateSol() Solution {
 	return s
 }
 
-// TryCreateOrigSol creates a new solution in the original space.
+// TryCreateOrigSol creates a new solution in the original space. The solution
+// is attributed to no heuristic; see TryCreateOrigSolFor.
 func (m Model) TryCreateOrigSol() (Solution, error) {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("CreateOrigSol"); err != nil {
 		return Solution{}, err
 	}
-	raw, err := m.scip.createSol(true)
+	raw, err := m.scip.createSol(true, nil)
 	return m.sol("CreateOrigSol", raw, err)
 }
 
@@ -54,13 +56,14 @@ func (m Model) CreateOrigSol() Solution {
 // TryCreatePartialSol creates a new partial solution: variables left unset
 // are UNKNOWN rather than zero, and are filled in by the completesol
 // heuristic when the solution is added via AddSol. Useful as a MIP-start that
-// fixes only some variables and lets the solver complete the rest.
+// fixes only some variables and lets the solver complete the rest. The
+// solution is attributed to no heuristic; see TryCreatePartialSolFor.
 func (m Model) TryCreatePartialSol() (Solution, error) {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("CreatePartialSol"); err != nil {
 		return Solution{}, err
 	}
-	raw, err := m.scip.createPartialSol()
+	raw, err := m.scip.createPartialSol(nil)
 	return m.sol("CreatePartialSol", raw, err)
 }
 
@@ -68,6 +71,73 @@ func (m Model) TryCreatePartialSol() (Solution, error) {
 // It panics on failure.
 func (m Model) CreatePartialSol() Solution {
 	s, err := m.TryCreatePartialSol()
+	must(err)
+	return s
+}
+
+// tryCreateSolFor is the shared shape of the attributed constructors: they
+// pass heur to SCIP so the solution records it as its creator, which
+// Solution.Heuristic reports; see also HeuristicPlugin.NSolsFound for how
+// per-heuristic counters actually accrue.
+func (m Model) tryCreateSolFor(op string, create func(heur *C.SCIP_HEUR) (*C.SCIP_SOL, error), h HeuristicPlugin) (Solution, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.guard(op); err != nil {
+		return Solution{}, err
+	}
+	if err := m.checkHandle(op, "HeuristicPlugin", h.raw != nil, h.scip, genNone, true); err != nil {
+		return Solution{}, err
+	}
+	raw, err := create(h.raw)
+	return m.sol(op, raw, err)
+}
+
+// TryCreateSolFor creates a new solution initialized to zero and attributed
+// to heur, so the solution records heur as its creator; see Solution.Heuristic.
+func (m Model) TryCreateSolFor(h HeuristicPlugin) (Solution, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	return m.tryCreateSolFor("CreateSolFor", func(heur *C.SCIP_HEUR) (*C.SCIP_SOL, error) {
+		return m.scip.createSol(false, heur)
+	}, h)
+}
+
+// CreateSolFor creates a new solution attributed to heur; see
+// TryCreateSolFor. It panics on failure.
+func (m Model) CreateSolFor(h HeuristicPlugin) Solution {
+	s, err := m.TryCreateSolFor(h)
+	must(err)
+	return s
+}
+
+// TryCreateOrigSolFor creates a new solution in the original space,
+// attributed to heur; see TryCreateSolFor.
+func (m Model) TryCreateOrigSolFor(h HeuristicPlugin) (Solution, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	return m.tryCreateSolFor("CreateOrigSolFor", func(heur *C.SCIP_HEUR) (*C.SCIP_SOL, error) {
+		return m.scip.createSol(true, heur)
+	}, h)
+}
+
+// CreateOrigSolFor creates a new solution in the original space attributed
+// to heur; see TryCreateOrigSolFor. It panics on failure.
+func (m Model) CreateOrigSolFor(h HeuristicPlugin) Solution {
+	s, err := m.TryCreateOrigSolFor(h)
+	must(err)
+	return s
+}
+
+// TryCreatePartialSolFor creates a new partial solution attributed to heur;
+// see TryCreatePartialSol and TryCreateSolFor.
+func (m Model) TryCreatePartialSolFor(h HeuristicPlugin) (Solution, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	return m.tryCreateSolFor("CreatePartialSolFor", func(heur *C.SCIP_HEUR) (*C.SCIP_SOL, error) {
+		return m.scip.createPartialSol(heur)
+	}, h)
+}
+
+// CreatePartialSolFor creates a new partial solution attributed to heur; see
+// TryCreatePartialSolFor. It panics on failure.
+func (m Model) CreatePartialSolFor(h HeuristicPlugin) Solution {
+	s, err := m.TryCreatePartialSolFor(h)
 	must(err)
 	return s
 }

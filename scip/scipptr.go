@@ -1193,14 +1193,14 @@ func (s *Scip) consIsSeparated(cons Constraint) bool {
 
 // ------------------------------------------------------------- solutions
 
-func (s *Scip) createSol(original bool) (*C.SCIP_SOL, error) {
+func (s *Scip) createSol(original bool, heur *C.SCIP_HEUR) (*C.SCIP_SOL, error) {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var sol *C.SCIP_SOL
 	var rc C.SCIP_RETCODE
 	if original {
-		rc = C.SCIPcreateOrigSol(s.raw, &sol, nil)
+		rc = C.SCIPcreateOrigSol(s.raw, &sol, heur)
 	} else {
-		rc = C.SCIPcreateSol(s.raw, &sol, nil)
+		rc = C.SCIPcreateSol(s.raw, &sol, heur)
 	}
 	if err := retcodeError(rc); err != nil {
 		return nil, err
@@ -1211,10 +1211,10 @@ func (s *Scip) createSol(original bool) (*C.SCIP_SOL, error) {
 	return sol, nil
 }
 
-func (s *Scip) createPartialSol() (*C.SCIP_SOL, error) {
+func (s *Scip) createPartialSol(heur *C.SCIP_HEUR) (*C.SCIP_SOL, error) {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var sol *C.SCIP_SOL
-	if err := retcodeError(C.SCIPcreatePartialSol(s.raw, &sol, nil)); err != nil {
+	if err := retcodeError(C.SCIPcreatePartialSol(s.raw, &sol, heur)); err != nil {
 		return nil, err
 	}
 	if sol == nil {

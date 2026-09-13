@@ -232,7 +232,7 @@ type keepingHeur struct {
 	v     *Variable
 }
 
-func (h *keepingHeur) Execute(model Model, _ HeurTiming, _ bool) HeurResult {
+func (h *keepingHeur) Execute(model Model, _ HeuristicPlugin, _ HeurTiming, _ bool) HeurResult {
 	if h.model == nil {
 		m := model
 		v := model.Vars()[0]
@@ -285,7 +285,7 @@ type childrenProbe struct {
 	solVal   atomic.Int32
 }
 
-func (p *childrenProbe) Execute(model Model, _ HeurTiming, _ bool) HeurResult {
+func (p *childrenProbe) Execute(model Model, _ HeuristicPlugin, _ HeurTiming, _ bool) HeurResult {
 	focus := model.FocusNode()
 	if parent, ok := focus.Parent(); ok {
 		if _, err := parent.TryChildren(); errors.Is(err, RetcodeInvalidData) {
@@ -370,7 +370,7 @@ func TestSubSCIPHandlesRejectedByParent(t *testing.T) {
 
 type nodeKeeper struct{ n *Node }
 
-func (k *nodeKeeper) Execute(model Model, _ HeurTiming, _ bool) HeurResult {
+func (k *nodeKeeper) Execute(model Model, _ HeuristicPlugin, _ HeurTiming, _ bool) HeurResult {
 	if k.n == nil {
 		n := model.FocusNode()
 		k.n = &n
@@ -419,7 +419,7 @@ func TestCreateProbInvalidatesOriginalHandles(t *testing.T) {
 func TestBacktrackToCurrentDepthIsNoop(t *testing.T) {
 	// exercised through the prober only while solving, so drive it from a heuristic
 	var checked atomic.Bool
-	probe := heurFunc(func(model Model, _ HeurTiming, _ bool) HeurResult {
+	probe := heurFunc(func(model Model, _ HeuristicPlugin, _ HeurTiming, _ bool) HeurResult {
 		if checked.Load() {
 			return HeurResultDidNotRun
 		}
@@ -448,6 +448,8 @@ func TestBacktrackToCurrentDepthIsNoop(t *testing.T) {
 }
 
 // heurFunc adapts a function to the Heuristic interface.
-type heurFunc func(Model, HeurTiming, bool) HeurResult
+type heurFunc func(Model, HeuristicPlugin, HeurTiming, bool) HeurResult
 
-func (f heurFunc) Execute(m Model, t HeurTiming, inf bool) HeurResult { return f(m, t, inf) }
+func (f heurFunc) Execute(m Model, h HeuristicPlugin, t HeurTiming, inf bool) HeurResult {
+	return f(m, h, t, inf)
+}

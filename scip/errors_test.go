@@ -107,7 +107,7 @@ func TestTryAddValidation(t *testing.T) {
 
 type panickingHeur struct{}
 
-func (panickingHeur) Execute(Model, HeurTiming, bool) HeurResult { panic("boom") }
+func (panickingHeur) Execute(Model, HeuristicPlugin, HeurTiming, bool) HeurResult { panic("boom") }
 
 func TestCallbackPanicReturned(t *testing.T) {
 	m := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.lp"))
@@ -385,7 +385,7 @@ type solvingConsHeur struct {
 	consOK, freeRejected *atomic.Bool
 }
 
-func (h solvingConsHeur) Execute(model Model, _ HeurTiming, _ bool) HeurResult {
+func (h solvingConsHeur) Execute(model Model, _ HeuristicPlugin, _ HeurTiming, _ bool) HeurResult {
 	if h.consOK.Load() {
 		return HeurResultDidNotRun
 	}
@@ -459,6 +459,13 @@ func TestPluginWrappersCheckOwnershipEverywhere(t *testing.T) {
 	pA, _ := a.FindPresolver("trivial")
 	if err := b.TrySetPresolverPriority(pA, 1); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("presol foreign: %v", err)
+	}
+	ha, _ := a.FindHeuristic("rounding")
+	if _, err := b.TryCreateSolFor(ha); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("create sol for foreign heur: %v", err)
+	}
+	if _, err := b.TryCreateSolFor(HeuristicPlugin{}); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("create sol for zero heur: %v", err)
 	}
 }
 
