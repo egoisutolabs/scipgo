@@ -1,0 +1,126 @@
+package scip
+
+/*
+#include "helpers.h"
+*/
+import "C"
+
+import (
+	"runtime"
+	"sync"
+)
+
+// rowOwners tracks the rows the binding created and still holds a SCIP
+// capture on, keyed by the row and valued by the owning raw SCIP instance.
+// SCIPcreateEmptyRow* hand the caller one capture; SCIPaddRow* take their
+// own, so the binding's capture must be released after a successful add —
+// and rows created but never added must be released at FreeTransform or
+// free, before the instance can tear the LP down. Rows obtained from
+// queries (Constraint.Row, Col.Rows) are never in this map and are never
+// released by the binding.
+//
+// Sub-SCIP copies: rows created through a copy's callback model belong to
+// the copy's raw pointer, and the copy's plugin free callbacks call
+// forgetCopy, which releases them there.
+var rowOwners = struct {
+	sync.Mutex
+	rows map[*C.SCIP_ROW]*C.SCIP
+}{rows: make(map[*C.SCIP_ROW]*C.SCIP)}
+
+// rowsReleasedForTest counts binding-owned captures released, so tests can
+// pin the ownership rules without dipping into C. Same-package tests reset
+// it directly.
+var rowsReleasedForTest int
+
+// ownRow records the binding's capture on a freshly created row.
+func ownRow(s *Scip, row *C.SCIP_ROW) {
+	rowOwners.Lock()
+	rowOwners.rows[row] = s.raw
+	rowOwners.Unlock()
+}
+
+// releaseOwnedRow drops the binding's capture on row if it belongs to the
+// instance s, and reports whether it did. A row the binding did not create
+// (a query result), or one belonging to another instance, is left alone.
+// The release happens outside the registry lock.
+func releaseOwnedRow(s *Scip, row *C.SCIP_ROW) bool {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	rowOwners.Lock()
+	owner, ok := rowOwners.rows[row]
+	if !ok || owner != s.raw {
+		rowOwners.Unlock()
+		return false
+	}
+	delete(rowOwners.rows, row)
+	rowOwners.Unlock()
+
+	r := row
+	C.SCIPreleaseRow(s.raw, &r)
+	rowOwners.Lock()
+	rowsReleasedForTest++
+	rowOwners.Unlock()
+	return true
+}
+
+// releaseRowsOfOwner drops the binding's captures on every row still held
+// by one instance — the rows created and never added — and returns the
+// first release error, if any.
+func releaseRowsOfOwner(raw *C.SCIP) error {
+	rowOwners.Lock()
+	var owned []*C.SCIP_ROW
+	for row, owner := range rowOwners.rows {
+		if owner == raw {
+			owned = append(owned, row)
+			delete(rowOwners.rows, row)
+		}
+	}
+	rowOwners.Unlock()
+
+	var firstErr error
+	for _, row := range owned {
+		r := row
+		if err := retcodeError(C.SCIPreleaseRow(raw, &r)); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	rowOwners.Lock()
+	rowsReleasedForTest += len(owned)
+	rowOwners.Unlock()
+	return firstErr
+}
+
+// TryRelease releases the binding's capture on a row it created, freeing it
+// immediately when SCIP holds no other capture — for a plugin that built a
+// row and then decided not to add it. Rows added through Model.AddCut,
+// Prober.AddRow or Diver.AddRow are released by those methods; rows the
+// binding did not create (results of Constraint.Row, Col.Rows) are not the
+// binding's to release, and neither is a row that was already released, so
+// both fail with RetcodeInvalidData. After a successful release the Row
+// value is no longer usable.
+func (r Row) TryRelease() error {
+	defer runtime.KeepAlive(r.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	m := Model{scip: r.scip}
+	if err := m.checkHandle("Row.Release", "Row", r.raw != nil, r.scip, r.gen, false); err != nil {
+		return err
+	}
+	rowOwners.Lock()
+	owner, ok := rowOwners.rows[r.raw]
+	rowOwners.Unlock()
+	if !ok {
+		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
+			Detail: "row was not created by the binding, or is already released"})
+	}
+	if owner != r.scip.raw {
+		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
+			Detail: "row belongs to another model"})
+	}
+	if !releaseOwnedRow(r.scip, r.raw) {
+		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
+			Detail: "row was not created by the binding, or is already released"})
+	}
+	return nil
+}
+
+// Release releases the binding's capture on the row; see TryRelease. It
+// panics on failure.
+func (r Row) Release() { must(r.TryRelease()) }

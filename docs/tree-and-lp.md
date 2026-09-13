@@ -100,9 +100,16 @@ infeasible := model.AddCut(row, false)
 constraint, which is what SCIP's statistics report. `SeparatorPlugin` and
 `ConshdlrPlugin` also have `CreateEmptyRow` for the same purpose. Rows
 can also be added to a probing or diving LP with `AddRow` on the session.
-Rows the binding creates are currently never released back to SCIP, so
-they are kept until the process exits; see
-[#25](https://github.com/egoisutolabs/scipgo/issues/25).
+
+Ownership: the create call hands the binding one SCIP capture per row.
+Every add — `AddCut`, `Prober.AddRow`, `Diver.AddRow` — takes a capture of
+its own, and the binding releases its capture on success, so a row lives
+exactly as long as SCIP uses it and no longer. A row created but never
+added is released at `FreeTransform` or model free — or immediately with
+`Row.Release`/`TryRelease` if you know it will not be added. Rows reached
+through queries (`Constraint.Row`, `Col.Rows`) were never the binding's to
+release and `TryRelease` refuses them; the same holds for a row that was
+already added or released.
 
 ## Columns
 

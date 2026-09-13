@@ -212,6 +212,11 @@ func (s *Scip) free() error {
 		}
 	}
 
+	// The binding's still-held row captures go before SCIPfree tears down
+	// the LP; a debug SCIP asserts if they outlive the instance.
+	if err := releaseRowsOfOwner(s.raw); err != nil && firstErr == nil {
+		firstErr = err
+	}
 	if err := s.scipFree(raw); err != nil && firstErr == nil {
 		firstErr = err
 	}
@@ -1348,6 +1353,7 @@ func (s *Scip) createEmptyRow(rb *RowBuilder) (*C.SCIP_ROW, error) {
 	if err := retcodeError(rc); err != nil {
 		return nil, err
 	}
+	ownRow(s, rowPtr) // the binding holds the create capture until the row is added or the instance winds down
 	return rowPtr, nil
 }
 
@@ -1357,11 +1363,17 @@ func (s *Scip) addRow(row Row, forceCut bool) (bool, error) {
 	if err := retcodeError(C.SCIPaddRow(s.raw, row.raw, cBool(forceCut), &infeasible)); err != nil {
 		return false, err
 	}
+	// SCIPaddRow took its own capture; drop the binding's, mirroring
+	// create/fill/add/release in SCIP's own separators.
+	releaseOwnedRow(s, row.raw)
 	return infeasible != 0, nil
 }
 
 func (s *Scip) freeTransform() error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	// Rows created and never added are the binding's to release before the
+	// transformed problem — and the LP holding its captures — goes away.
+	releaseRowsOfOwner(s.raw)
 	err := retcodeError(C.SCIPfreeTransform(s.raw))
 	if err == nil {
 		s.root().transGen++ // every transformed handle is now dead

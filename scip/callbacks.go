@@ -144,6 +144,9 @@ func copyIncarnation(scip *C.SCIP) uint64 {
 }
 
 func forgetCopy(scip *C.SCIP) {
+	// The copy is going away: release the rows its callback models
+	// created, before the address can be reused.
+	releaseRowsOfOwner(scip)
 	copyParents.Lock()
 	defer copyParents.Unlock()
 	delete(copyParents.m, scip)
