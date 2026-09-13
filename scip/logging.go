@@ -167,8 +167,14 @@ func (m Model) trySetLog(op string, fn func(level LogLevel, line string)) error 
 			"a message handler can only be installed while the problem is not transformed")
 	}
 	if fn == nil {
+		// The old handler is released inside the C call, and its free
+		// callback flushes the old sink — which this model still holds
+		// strongly until the swap succeeds.
+		if err := m.call(op, C.scipgo_setDefaultMessagehdlr(m.scip.raw)); err != nil {
+			return err
+		}
 		m.scip.logSink = nil
-		return m.call(op, C.scipgo_setDefaultMessagehdlr(m.scip.raw))
+		return nil
 	}
 	sink := &logSink{fn: fn}
 	id := putLogSink(sink)
@@ -177,8 +183,9 @@ func (m Model) trySetLog(op string, fn func(level LogLevel, line string)) error 
 		return err
 	}
 	// The owning instance keeps the sink alive; the registry holds it only
-	// weakly, so a callback capturing its Model cannot root the model and
-	// block its finalizer.
+	// weakly, so a callback capturing its Model cannot root the model
+	// through the registry and block its finalizer. Set only after the
+	// install succeeded, so a failed replacement leaves the old sink held.
 	if r := m.scip.root(); r != nil {
 		r.logSink = sink
 	}
@@ -195,12 +202,15 @@ func (m Model) trySetLog(op string, fn func(level LogLevel, line string)) error 
 // before it reaches fn. fn may be called from several threads during a
 // concurrent solve. The sink's lock is held while fn runs, so fn must not
 // call into SCIP — through any Model — nor swap the sink: a nested message
-// or error would wait for that lock forever. Concurrent solves share the one
-// handler, and SCIP's callbacks carry no worker identity, so lines emitted
-// from different workers can interleave at fragment granularity — one
-// emitted line may be assembled from two workers' fragments; SCIP's own
-// default stdout handler mixes them the same way. Passing nil restores
-// SCIP's default stdout handler.
+// or error would wait for that lock forever. A callback that captures its
+// Model keeps the model alive — the same contract custom plugins already
+// have — so release the model with Free for deterministic cleanup rather
+// than relying on the finalizer. Concurrent solves share the one handler,
+// and SCIP's callbacks carry no worker identity, so lines emitted from
+// different workers can interleave at fragment granularity — one emitted
+// line may be assembled from two workers' fragments; SCIP's own default
+// stdout handler mixes them the same way. Passing nil restores SCIP's
+// default stdout handler.
 func (m Model) TrySetLogFunc(fn func(level LogLevel, line string)) error {
 	return m.trySetLog("SetLogFunc", fn)
 }

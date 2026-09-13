@@ -404,6 +404,28 @@ func TestSetLogFuncStageError(t *testing.T) {
 	}
 }
 
+// TestSetLogFuncNilFlushesPartialLine checks the swap ordering: the old
+// handler is released inside the C call that installs the default one, and
+// its free callback flushes the old sink, which the model still holds
+// strongly at that moment — so a buffered partial line survives the swap.
+func TestSetLogFuncNilFlushesPartialLine(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+	model := NewModel().IncludeDefaultPlugins()
+	model.SetLogFunc(func(_ LogLevel, line string) {
+		mu.Lock()
+		lines = append(lines, line)
+		mu.Unlock()
+	})
+	model.scip.logSink.write(LogInfo, "partial before the swap")
+	model.SetLogFunc(nil)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) != 1 || lines[0] != "partial before the swap" {
+		t.Fatalf("lines after swap: %q", lines)
+	}
+}
+
 // TestDroppedModelDoesNotLeakSink checks the ownership direction: the
 // registry holds sinks only weakly, and the model holds the strong
 // reference, so the tempting pattern — a callback capturing its own Model —
