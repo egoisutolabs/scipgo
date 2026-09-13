@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -423,6 +424,42 @@ func TestSetLogFuncNilFlushesPartialLine(t *testing.T) {
 	defer mu.Unlock()
 	if len(lines) != 1 || lines[0] != "partial before the swap" {
 		t.Fatalf("lines after swap: %q", lines)
+	}
+}
+
+// TestSinkFlushArrivalOrder checks pending partials are flushed in the
+// order they began arriving, not in channel order.
+func TestSinkFlushArrivalOrder(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+	sink := &logSink{fn: func(level LogLevel, line string) {
+		mu.Lock()
+		lines = append(lines, fmt.Sprintf("%d:%s", level, line))
+		mu.Unlock()
+	}}
+	sink.write(LogWarning, "warning fragment ") // arrives first
+	sink.write(LogInfo, "info fragment ")       // arrives second
+	sink.flush()
+	mu.Lock()
+	defer mu.Unlock()
+	want := []string{"1:warning fragment ", "0:info fragment "}
+	if len(lines) != 2 || lines[0] != want[0] || lines[1] != want[1] {
+		t.Fatalf("flush order = %q, want %q", lines, want)
+	}
+}
+
+// TestFreeReleasesSink checks explicit Free drops the strong sink reference,
+// so a callback capturing the Model does not keep it alive after the model
+// is freed.
+func TestFreeReleasesSink(t *testing.T) {
+	model := NewModel().IncludeDefaultPlugins()
+	model.SetLogFunc(func(_ LogLevel, _ string) { _ = model })
+	if model.scip.logSink == nil {
+		t.Fatal("sink not retained before Free")
+	}
+	model.Free()
+	if model.scip.logSink != nil {
+		t.Fatal("sink still retained after Free")
 	}
 }
 

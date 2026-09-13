@@ -221,6 +221,10 @@ func (s *Scip) free() error {
 		firstErr = fmt.Errorf("panic in plugin free callback: %v", ps[0])
 	}
 	deleteDatastore(s)
+	// scipFree released the message handler, whose free callback flushed the
+	// sink; drop the strong reference so a callback that captured the Model
+	// does not keep it (and everything the callback closes over) alive.
+	s.logSink = nil
 	s.raw = nil
 	return firstErr
 }

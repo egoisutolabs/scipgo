@@ -33,9 +33,13 @@ const (
 // concurrent solve several threads call into the same sink; holding the mutex
 // across the callback also preserves SCIP's emission order.
 type logSink struct {
-	fn  func(level LogLevel, line string)
-	mu  sync.Mutex
-	buf [3]strings.Builder
+	fn func(level LogLevel, line string)
+	mu sync.Mutex
+	// buf holds one unterminated partial line per channel. started records
+	// the channels in the order their partials began arriving, so the final
+	// flush emits pending lines in arrival order rather than channel order.
+	buf    [3]strings.Builder
+	started []LogLevel
 }
 
 // write adds one fragment to its channel's buffer, emitting every complete
@@ -47,6 +51,9 @@ func (s *logSink) write(level LogLevel, msg string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	b := &s.buf[level]
+	if b.Len() == 0 {
+		s.started = append(s.started, level) // a new partial line begins
+	}
 	for {
 		i := strings.IndexByte(msg, '\n')
 		if i < 0 {
@@ -57,7 +64,22 @@ func (s *logSink) write(level LogLevel, msg string) {
 		line := b.String()
 		b.Reset()
 		s.emit(level, line)
+		s.unstart(level)
 		msg = msg[i+1:]
+		if len(msg) > 0 {
+			s.started = append(s.started, level) // another partial begins
+		}
+	}
+}
+
+// unstart drops level's completed partial from the arrival-order record; the
+// caller holds s.mu.
+func (s *logSink) unstart(level LogLevel) {
+	for i, l := range s.started {
+		if l == level {
+			s.started = append(s.started[:i], s.started[i+1:]...)
+			return
+		}
 	}
 }
 
@@ -66,13 +88,16 @@ func (s *logSink) write(level LogLevel, msg string) {
 func (s *logSink) flush() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for level := range s.buf {
-		if b := &s.buf[level]; b.Len() > 0 {
-			line := b.String()
-			b.Reset()
-			s.emit(LogLevel(level), line)
+	for _, level := range s.started { // arrival order, not channel order
+		b := &s.buf[level]
+		if b.Len() == 0 {
+			continue
 		}
+		line := b.String()
+		b.Reset()
+		s.emit(level, line)
 	}
+	s.started = s.started[:0]
 }
 
 // emit calls the user callback; the caller holds s.mu. A panic is reported
