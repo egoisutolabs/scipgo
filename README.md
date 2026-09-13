@@ -179,6 +179,28 @@ held while the callback runs, so it must not call into SCIP — through any
 model — nor swap the sink: a nested message would wait for that lock
 forever.
 
+## Exact solving
+
+SCIP can solve in rational arithmetic end to end. Enable it on a fresh model
+— before plugins are included or a problem is read — and the whole solve
+runs exact:
+
+```go
+model := scip.NewModel().
+	EnableExactSolving(). // stage Init only
+	IncludeDefaultPlugins()
+model.ReadProb("problem.mps")
+solved := model.Solve()
+if sol, ok := solved.BestSol(); ok {
+	obj := sol.ObjValExact() // *big.Rat, e.g. 7615/1
+}
+```
+
+`Solution.ValExact` and `ObjValExact` report the solver's rationals as
+`*big.Rat` (convert to any decimal type yourself); on a model that did not
+solve exactly they return an error — there is no rational value to lift. The
+float64 accessors keep working and return the rationals' projections.
+
 Error messages (`SCIPerrorMessage`) are not part of the message handler:
 they go through one process-global hook. `scip.SetErrorLogFunc(fn)` redirects
 them for the whole process — not per model — and passes fragments through

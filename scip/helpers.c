@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #include "helpers.h"
 #include "_cgo_export.h"
 #include "scip/message_default.h"
@@ -358,3 +360,51 @@ void scipgo_setErrorPrintingDefault(void)
     SCIPmessageSetErrorPrintingDefault();
 }
 
+
+SCIP_RETCODE scipgo_enableExact(SCIP* scip, SCIP_Bool enable)
+{
+    return SCIPenableExactSolving(scip, enable);
+}
+
+/* Writes a malloc'd string representation (free with free()) of the rational
+   produced by the caller; SCIPrationalStrLen sizes the buffer. */
+static SCIP_RETCODE scipgo_rationalString(SCIP_RATIONAL* rat, char** str)
+{
+    int len;
+    char* s;
+
+    *str = NULL;
+    len = SCIPrationalStrLen(rat);
+    s = (char*)malloc((size_t)len + 1);
+    if( s == NULL )
+        return SCIP_NOMEMORY;
+    SCIPrationalToString(rat, s, len + 1);
+    *str = s;
+    return SCIP_OKAY;
+}
+
+SCIP_RETCODE scipgo_solValExact(SCIP* scip, SCIP_SOL* sol, SCIP_VAR* var, char** str)
+{
+    SCIP_RATIONAL* rat = NULL;
+    SCIP_RETCODE rc;
+
+    *str = NULL;
+    SCIP_CALL( SCIPrationalCreate(&rat) );
+    SCIPgetSolValExact(scip, sol, var, rat); /* void: aborts on bad input */
+    rc = scipgo_rationalString(rat, str);
+    SCIPrationalFree(&rat);
+    return rc;
+}
+
+SCIP_RETCODE scipgo_solOrigObjExact(SCIP* scip, SCIP_SOL* sol, char** str)
+{
+    SCIP_RATIONAL* rat = NULL;
+    SCIP_RETCODE rc;
+
+    *str = NULL;
+    SCIP_CALL( SCIPrationalCreate(&rat) );
+    SCIPgetSolOrigObjExact(scip, sol, rat); /* void: aborts on bad input */
+    rc = scipgo_rationalString(rat, str);
+    SCIPrationalFree(&rat);
+    return rc;
+}
