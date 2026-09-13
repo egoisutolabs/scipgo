@@ -589,7 +589,7 @@ func GoHeurExec(scip *C.SCIP, heur *C.SCIP_HEUR, heurtiming C.SCIP_HEURTIMING, n
 	}
 
 	currentNSols := C.SCIPgetNSols(scip)
-	heurRes := h.Execute(model, heurTimingFromC(uint32(heurtiming)), nodeinfeasible != 0)
+	heurRes := h.Execute(model, HeuristicPlugin{raw: heur, scip: model.scip}, heurTimingFromC(uint32(heurtiming)), nodeinfeasible != 0)
 	if heurRes == HeurResultFoundSol {
 		newNSols := C.SCIPgetNSols(scip)
 		if newNSols <= currentNSols {

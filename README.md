@@ -193,6 +193,27 @@ func (firstBranchRule) Execute(model scip.Model, _ scip.BranchRulePlugin,
 model.Add(scip.NewBranchRule(firstBranchRule{}).Name("first"))
 ```
 
+A heuristic's `Execute` receives its own plugin wrapper, so the solutions
+it creates can record it as their creator:
+
+```go
+func (h *myHeur) Execute(model scip.Model, heur scip.HeuristicPlugin,
+	_ scip.HeurTiming, _ bool) scip.HeurResult {
+	sol := model.CreateSolFor(heur) // sol.Heuristic() == heur afterwards
+	// ... set values, then:
+	if err := model.AddSol(&sol); err != nil {
+		return scip.HeurResultNoSolFound
+	}
+	return scip.HeurResultFoundSol
+}
+```
+
+SCIP credits the heuristic that is executing whenever a solution is added;
+`CreateSolFor` additionally records the creator on the solution, reported by
+`Solution.Heuristic`. Solutions added outside any heuristic's execution —
+MIP-start seeds before `Solve` — record a creator only through the `For`
+constructors.
+
 A constraint handler implements `Check` and `Enforce`; it may also implement
 `ConshdlrEnfoPS` (pseudo solutions), `ConshdlrSepa` (LP separation) and
 `ConshdlrProp` (propagation), which are registered only when present.
