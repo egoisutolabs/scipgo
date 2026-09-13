@@ -105,7 +105,7 @@ func (d *Diver) SolveLp(iterationLimit int) (bool, error) {
 		return false, err
 	}
 	if lperror != 0 {
-		return false, RetcodeLpError
+		return false, (Model{scip: d.scip}).invalid("Diver.SolveLp", RetcodeLpError, "LP solver reported an error")
 	}
 	return C.SCIPgetLPSolstat(d.scip.raw) == C.SCIP_LPSOLSTAT_OPTIMAL, nil
 }

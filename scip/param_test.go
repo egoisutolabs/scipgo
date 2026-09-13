@@ -120,3 +120,29 @@ func TestSetParamIntOverflow(t *testing.T) {
 		t.Fatal("expected overflow error")
 	}
 }
+
+// TestGetParamErrorIsError checks the generic getter reports failures the
+// same way the typed getters do: as *Error carrying the Retcode.
+func TestGetParamErrorIsError(t *testing.T) {
+	model := createTestModel(t)
+	defer model.Free()
+	var n int64
+	err := GetParam(model, "limits/nosuch", &n)
+	e := asError(t, err)
+	if e.Op != "LongintParam" || !errors.Is(err, RetcodeParameterUnknown) {
+		t.Fatalf("GetParam error = %v, want *Error with LongintParam/ParameterUnknown", err)
+	}
+	var i int32
+	if err := GetParam(model, "limits/nodes", &i); !errors.Is(err, RetcodeParameterWrongType) {
+		t.Fatalf("wrong out type: %v", err)
+	}
+	if err := GetParam(model, "limits/nodes", &struct{}{}); !errors.Is(err, RetcodeInvalidData) || asError(t, err).Op != "GetParam" {
+		t.Fatalf("unsupported out type: %v", err)
+	}
+	if _, err := SetParam(model, "limits/nodes", uint(1)); !errors.Is(err, RetcodeInvalidData) || asError(t, err).Op != "SetParam" {
+		t.Fatalf("unsupported value type: %v", err)
+	}
+	if _, err := SetParam(model, "display/freq", int(1)<<40); !errors.Is(err, RetcodeParameterWrongVal) || asError(t, err).Op != "SetIntParam" {
+		t.Fatalf("int overflow: %v", err)
+	}
+}

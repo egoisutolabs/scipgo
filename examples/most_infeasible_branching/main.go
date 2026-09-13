@@ -12,12 +12,14 @@ import (
 type mostInfeasibleBranching struct{}
 
 func (mostInfeasibleBranching) Execute(model scip.Model, _ scip.BranchRulePlugin, candidates []scip.BranchingCandidate) scip.BranchingResult {
+	// The most infeasible candidate is the one whose fractional part is
+	// closest to one half, i.e. with the smallest distance from 0.5.
 	best := candidates[0]
-	bestFractionality := abs(best.Frac - 0.5)
+	bestDistance := abs(best.Frac - 0.5)
 
 	for _, cand := range candidates[1:] {
-		if f := abs(cand.Frac - 0.5); f > bestFractionality {
-			bestFractionality = f
+		if d := abs(cand.Frac - 0.5); d < bestDistance {
+			bestDistance = d
 			best = cand
 		}
 	}

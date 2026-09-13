@@ -118,11 +118,12 @@ func (m Model) ConsIsSeparated(c Constraint) bool {
 	return m.scip.consIsSeparated(c)
 }
 
-// Write writes the problem to a file using SCIP's writer.
+// Write writes the original problem to a file using SCIP's writer.
 //
-// path is the file path (without extension), ext the file extension (e.g.
-// "lp", "mps") and symb selects whether to use symbolic names given by the
-// user for variables and constraints.
+// path is the file name exactly as it will be created; ext selects the
+// writer (e.g. "lp", "mps", "cip") regardless of the name's extension; and
+// symb keeps the variable and constraint names given by the user when
+// true, or writes generic names when false.
 func (m Model) Write(path, ext string, symb bool) error {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("Write"); err != nil {

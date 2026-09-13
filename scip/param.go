@@ -15,7 +15,7 @@ func SetParam(m Model, name string, value any) (Model, error) {
 		return m.SetRealParam(name, float64(v))
 	case int:
 		if v < math.MinInt32 || v > math.MaxInt32 {
-			return m, fmt.Errorf("scip: int value %d for parameter %q overflows int32; pass an int64", v, name)
+			return m, m.invalid("SetIntParam", RetcodeParameterWrongVal, fmt.Sprintf("%s: int value %d overflows int32; pass an int64", name, v))
 		}
 		return m.SetIntParam(name, int32(v))
 	case int32:
@@ -27,7 +27,7 @@ func SetParam(m Model, name string, value any) (Model, error) {
 	case string:
 		return m.SetStrParam(name, v)
 	default:
-		return m, fmt.Errorf("scip: unsupported parameter type %T", value)
+		return m, m.invalid("SetParam", RetcodeInvalidData, fmt.Sprintf("%s: unsupported parameter type %T", name, value))
 	}
 }
 
@@ -37,37 +37,37 @@ func SetParam(m Model, name string, value any) (Model, error) {
 func GetParam(m Model, name string, out any) error {
 	switch o := out.(type) {
 	case *float64:
-		v, err := m.scip.realParam(name)
+		v, err := m.TryRealParam(name)
 		if err != nil {
 			return err
 		}
 		*o = v
 	case *int32:
-		v, err := m.scip.intParam(name)
+		v, err := m.TryIntParam(name)
 		if err != nil {
 			return err
 		}
 		*o = v
 	case *int64:
-		v, err := m.scip.longintParam(name)
+		v, err := m.TryLongintParam(name)
 		if err != nil {
 			return err
 		}
 		*o = v
 	case *bool:
-		v, err := m.scip.boolParam(name)
+		v, err := m.TryBoolParam(name)
 		if err != nil {
 			return err
 		}
 		*o = v
 	case *string:
-		v, err := m.scip.strParam(name)
+		v, err := m.TryStrParam(name)
 		if err != nil {
 			return err
 		}
 		*o = v
 	default:
-		return fmt.Errorf("scip: unsupported parameter out type %T", out)
+		return m.invalid("GetParam", RetcodeInvalidData, fmt.Sprintf("%s: unsupported parameter out type %T", name, out))
 	}
 	return nil
 }

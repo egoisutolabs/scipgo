@@ -21,7 +21,10 @@ type cspPricer struct {
 
 func (p *cspPricer) GenerateColumns(model scip.Model, _ scip.PricerPlugin, farkas bool) scip.PricerResult {
 	// Pricing has no idea what branching decisions were made by SCIP, so we
-	// only run the pricer at the root node.
+	// only run the pricer at the root node. Returning NoColumns below the root
+	// makes the tree an exact solve over the root's columns only, which is a
+	// heuristic for the full problem; see examples/bin_packing for branching
+	// that the pricer can honour.
 	if model.FocusNode().Depth() > 0 {
 		return scip.PricerResult{State: scip.PricerResultStateNoColumns}
 	}

@@ -66,7 +66,8 @@ type BranchingCandidate struct {
 	VarProbID int
 	// LpSolVal is the LP solution value of the variable.
 	LpSolVal float64
-	// Frac is the fractional part of the LP solution value.
+	// Frac is the fractional part of the LP solution value, in [0, 1) for
+	// negative values as well (SCIP's feasibility fractionality).
 	Frac float64
 }
 

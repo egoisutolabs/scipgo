@@ -2,6 +2,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -35,7 +36,7 @@ func (h *randomRoundingHeur) Execute(model scip.Model, heur scip.HeuristicPlugin
 		t := v.VarType()
 
 		if t == scip.VarTypeInteger || t == scip.VarTypeBinary {
-			fracPart := lpVal - math.Trunc(lpVal)
+			fracPart := lpVal - math.Floor(lpVal) // in [0, 1) for negative values too
 			if fracPart > 1e-6 && fracPart < 1.0-1e-6 {
 				hasFractional = true
 				var rounded float64
@@ -69,6 +70,9 @@ func (h *randomRoundingHeur) Execute(model scip.Model, heur scip.HeuristicPlugin
 
 	// Try to add the rounded solution
 	if err := model.AddSol(&sol); err != nil {
+		if !errors.Is(err, scip.SolErrorInfeasible) {
+			panic(err) // a SCIP failure or a constraint handler panic, not a rejected guess
+		}
 		fmt.Println("-- RandomRoundingHeur: Failed to add solution to the model.")
 		return scip.HeurResultNoSolFound
 	}

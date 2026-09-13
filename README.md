@@ -1,305 +1,124 @@
 # scipgo
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/egoisutolabs/scipgo/scip.svg)](https://pkg.go.dev/github.com/egoisutolabs/scipgo/scip)
-[![ci](https://github.com/egoisutolabs/scipgo/actions/workflows/ci.yml/badge.svg)](https://github.com/egoisutolabs/scipgo/actions/workflows/ci.yml)
+[![CI](https://github.com/egoisutolabs/scipgo/actions/workflows/ci.yml/badge.svg)](https://github.com/egoisutolabs/scipgo/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/egoisutolabs/scipgo)](https://goreportcard.com/report/github.com/egoisutolabs/scipgo)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Go (cgo) bindings for [SCIP](https://www.scipopt.org/), the solver for mixed
-integer programming (MIP) and mixed integer nonlinear programming (MINLP).
-This is a port of the Rust crate
-[russcip](https://github.com/scipopt/russcip) to Go; the API follows
-russcip's closely.
+Go bindings for [SCIP](https://www.scipopt.org/), one of the fastest
+non-commercial solvers for mixed integer programming (MIP) and mixed
+integer nonlinear programming (MINLP). scipgo is a port of the Rust crate
+[russcip](https://github.com/scipopt/russcip) and follows its API closely,
+so the two are easy to move between.
 
-## Layout
+```go
+model := scip.DefaultModel().HideOutput().Maximize()
+x := scip.NewVar().Name("x").Int().Obj(3).AddTo(model)
+y := scip.NewVar().Name("y").Int().Obj(4).AddTo(model)
+model.Add(
+	scip.NewCons().Coef(x, 2).Coef(y, 1).Le(100),
+	scip.NewCons().Coef(x, 1).Coef(y, 2).Le(80),
+)
 
-- `scip/` — the library (a single Go package `scip`). All cgo glue, the
-  `Model` API, builders, and plugin callbacks live here. (They cannot be
-  split across packages: cgo `//export` trampolines must sit in the same
-  package as the C helpers, and cgo C types are per-package.)
-- `examples/` — example programs:
-  - `create_and_solve` — build a MIP from scratch and solve it
-  - `knapsack` — 0/1 knapsack via the variable builder API
-  - `bin_packing`, `cutting_stock` — column generation with a pricer
-  - `tsp` — subtour elimination with a constraint handler
-  - `clique_separator` — custom separator
-  - `most_infeasible_branching` — custom branching rule
-  - `depth_first_node_selection` — custom node selector
-  - `node_event_handler` — event handler
-  - `random_rounding` — primal heuristic
-  - `concurrent_solve` — SCIP's concurrent solvers
-  (run from within an example's directory: `go run .`)
-- `data/test/` — small LP/MPS instances used by the tests and examples
-  (taken from russcip).
+solved := model.Solve()
+sol, _ := solved.BestSol()
+fmt.Println(solved.Status(), sol.ObjVal(), sol.Val(x), sol.Val(y))
+// Optimal 200 40 20
+```
 
-## Requirements
+## Features
 
-- Go 1.25+
-- SCIP 10.x, e.g. `brew install scip` (macOS) or built from source. The
-  default cgo flags look in `/opt/homebrew` and `/usr/local` on macOS and
-  `/usr` on Linux; override with `CGO_CFLAGS`/`CGO_LDFLAGS` if SCIP lives
-  elsewhere.
+- **The whole modeling surface.** Continuous, integer, binary and implicit
+  integer variables; linear, set partitioning, packing and covering,
+  cardinality, SOS1, indicator, quadratic and general nonlinear
+  constraints; expression trees and SCIP's own expression syntax; reading
+  and writing LP, MPS and the other formats SCIP knows.
+- **Plugins in Go.** Branching rules, primal heuristics, separators,
+  pricers, constraint handlers, event handlers and node selectors are Go
+  interfaces, registered with a builder. Panics in callbacks are captured
+  and re-raised from `Solve` instead of crashing the process.
+- **Safe by construction.** Methods that can fail against SCIP come in a
+  panicking and an error-returning form, so you choose per call site.
+  Every query checks the solver stage and the
+  liveness of the model and handle before touching SCIP, so a call in the
+  wrong stage, on a freed model, or with a handle from a freed or replaced
+  problem produces a Go error instead of undefined behaviour.
+- **Fits a Go service.** Solves stop on a `context.Context`. SCIP's log
+  routes into an `io.Writer`, a `*slog.Logger` or a callback. Memory is
+  released explicitly with `Free` or by a finalizer.
+- **Concurrent and exact solving.** SCIP's parallel portfolio through
+  `SolveConcurrent`, and end-to-end rational arithmetic through
+  `EnableExactSolving` with `*big.Rat` results.
 
-## Install
+## Installation
+
+scipgo links against an installed SCIP 10 through cgo. Nothing is bundled.
 
 ```bash
+# macOS
+brew install scip
+
+# Ubuntu 22.04 (packages for other distributions on the SCIP releases page)
+wget https://github.com/scipopt/scip/releases/download/v10.0.2/scipoptsuite_10.0.2-1+jammy_amd64.deb
+sudo apt-get install -y ./scipoptsuite_10.0.2-1+jammy_amd64.deb
+
 go get github.com/egoisutolabs/scipgo/scip
 ```
 
-The package uses cgo, so a C compiler and a SCIP installation are needed on
-the build machine (see Requirements). Nothing is bundled.
+Go 1.25 or newer and a C compiler are required. SCIP in a custom location,
+Docker images and build errors are covered in the
+[installation guide](docs/installation.md).
 
-## Usage
+## Documentation
 
-```go
-package main
+The [documentation](docs/README.md) walks through the binding from the
+first model to branch-and-price; the
+[API reference](https://pkg.go.dev/github.com/egoisutolabs/scipgo/scip)
+documents every method.
 
-import "github.com/egoisutolabs/scipgo/scip"
+| Guide | Covers |
+| --- | --- |
+| [Getting started](docs/getting-started.md) | A first model, builders, reading a file, controlling the solve |
+| [Modeling](docs/modeling.md) | Variables, every constraint kind, nonlinear expressions, file I/O |
+| [Solving](docs/solving.md) | Statuses, limits, stopping a solve, statistics, re-solving, concurrent and exact modes |
+| [Solutions](docs/solutions.md) | Reading solutions, MIP starts, partial solutions |
+| [Parameters](docs/parameters.md) | The parameter API and the parameters worth knowing |
+| [Logging](docs/logging.md) | Routing SCIP's log and error output |
+| [Errors](docs/errors.md) | `Try` and panicking forms, error types, liveness |
+| [Model lifecycle](docs/lifecycle.md) | Stages, handles, memory, goroutines |
+| [Plugins](docs/plugins/README.md) | Writing branch rules, heuristics, separators, pricers, constraint handlers, event handlers and node selectors |
+| [Coming from russcip](docs/russcip.md) | The mapping between the Rust API and this one |
 
-func main() {
-	model := scip.DefaultModel().Minimize()
-	x := model.AddVar(0, 1, 1, "x", scip.VarTypeBinary)
-	y := model.AddVar(0, 1, 2, "y", scip.VarTypeBinary)
-	model.AddCons([]scip.Variable{x, y}, []float64{1, 1}, 1, 1, "c")
+## Examples
 
-	solved := model.Solve()
-	fmt.Println(solved.Status(), solved.ObjVal())
-}
-```
+Eleven complete programs live under [`examples/`](examples/README.md),
+each solving a real problem and checking its answer: a first MIP, a
+knapsack, custom branching, node selection, event handling, a rounding
+heuristic, a clique separator, TSP with subtour elimination, cutting stock
+and bin packing by branch-and-price, and a concurrent solve. Run one from
+its directory with `go run .`.
 
-With the builder API:
+## Repository layout
 
-```go
-model := scip.DefaultModel().Minimize()
-x := scip.NewVar().Name("x").Bin().Obj(1).AddTo(model)
-y := scip.NewVar().Name("y").Bin().Obj(2).AddTo(model)
-model.Add(scip.NewCons().Name("c").Eq(1).Coef(x, 1).Coef(y, 1))
-solved := model.Solve()
-```
+| Path | Contents |
+| --- | --- |
+| `scip/` | The library, a single Go package. cgo glue, the `Model` API, builders and plugin callbacks live together because cgo's exported trampolines must sit in the package that owns the C helpers |
+| `examples/` | Example programs |
+| `docs/` | The guides |
+| `data/test/` | Small LP and MPS instances used by the tests and examples |
 
-## Errors
+## Status
 
-Every `Model` method that can fail against SCIP comes in two forms. `Try*`
-returns an error and the plain name panics with the same value, so pick per
-call site:
+scipgo is pre-1.0. The API is stable in shape, and renames ship with
+deprecated aliases that stay until the next major version; see the
+[changelog](CHANGELOG.md). It is tested on macOS and Linux against SCIP
+10 on every push.
 
-```go
-v, err := model.TryAddVar(0, 1, 1, "x", scip.VarTypeBinary)
-var e *scip.Error
-if errors.As(err, &e) {
-	log.Printf("%s failed in stage %s: %v", e.Op, e.Stage, e.Retcode)
-}
-if errors.Is(err, scip.RetcodeInvalidCall) { /* wrong stage */ }
+## Contributing
 
-solved, err := model.TrySolve()
-var cp *scip.CallbackPanic
-if errors.As(err, &cp) { /* a plugin panicked: cp.Plugin, cp.Value */ }
-```
-
-`ReadProb`, `AddSol`, `Write` and the `Set*Param` family return errors under
-their plain names. Queries (`Status`, `NVars`, `ObjVal`, the tree and LP
-accessors, and every method on `Variable`, `Constraint`, `Solution`, `Node`,
-`Row` and `Col`) check the stage SCIP documents for them and the model's
-liveness first, and panic with an `*Error` instead of letting SCIP abort the
-process; the ones a service calls defensively (`TryStatus`, `TryObjVal`,
-`TryBestSol`, `TryNVars`, `TryConss`, ...) have error-returning forms. The
-optional tree accessors (`BestNode`, `Leaves`, ...) return nil outside the
-solving stage. Mutators on `Prober`, `Diver`, `Row`, `Solution` and `Node`
-have `Try*` siblings too.
-
-Liveness is judged by instance, not by pointer: a handle from a freed
-model, a handle into a transformed problem that `FreeTransform` has since
-released, a handle passed to a different model, and a handle minted inside
-a plugin callback after its model is gone all produce an `*Error`. Original
-variables, constraints and solutions survive `FreeTransform`; transformed
-ones, rows, columns and nodes do not. `Variable.SolVal` is defined only while
-presolved or solving, as SCIP defines it; read values after a solve from
-`BestSol`. `Redcost` on a variable or column reports unavailable unless the
-current node's LP is solved.
-
-## Stopping a solve
-
-`Interrupt` asks a running solve to stop at the next opportunity and is the
-one `Model` method safe to call from another goroutine; `SolveContext` and
-`SolveConcurrentContext` do the same from a `context.Context`:
-
-```go
-ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-defer cancel()
-solved, err := model.SolveContext(ctx)
-if errors.Is(err, context.DeadlineExceeded) {
-    // stopped at the deadline: status StatusUserInterrupt,
-    // the incumbent (if any) is still available
-    if sol, ok := solved.BestSol(); ok { report(sol) }
-}
-```
-
-The error is an `*scip.Error` wrapping the context error, so
-`errors.Is(err, context.DeadlineExceeded)` works. An already-done context
-prevents `SCIPsolve` from being called at all, and a cancellation that
-arrives as the solve starts is re-issued until it lands. A stop is noticed
-between nodes, presolve rounds, LP iterations and pricing rounds — workers
-of a concurrent solve, which are separate SCIP instances, are stopped at
-node, presolve-round and LP-solve boundaries instead. A single long
-operation such as a big root LP or a slow plugin callback delays it until
-that operation returns, and a plugin that wants finer granularity can check
-its own context between callbacks. A stopped solve leaves the model usable:
-`BestSol` returns the incumbent if one was found, and `FreeTransform` plus a
-new solve work.
-
-Concurrent solves are stopped through an event handler the binding includes
-automatically; a model built without `IncludeDefaultPlugins` whose first
-solve is a `SolveConcurrent` started from a stage past the problem stage
-cannot be stopped before it completes.
-
-## Logging
-
-SCIP writes its log to the process stdout by default. `SetLogFunc`,
-`SetLogWriter` and `SetLogger` route it into Go instead, per model:
-
-```go
-var buf bytes.Buffer
-model := scip.NewModel().
-	SetLogWriter(&buf). // one whole line per callback, no trailing newline
-	IncludeDefaultPlugins()
-model.ReadProb("problem.mps")
-model.Solve() // the SCIP Status line is in buf, not on stdout
-```
-
-The handler must be installed before the problem is transformed — stage Init
-or Problem, which is before the first `Solve`; after one, `FreeTransform`
-brings the model back and allows swapping it again. `SetLogFunc(nil)`
-restores the default stdout handler. Lines are buffered from SCIP's
-fragments and delivered whole; output SCIP writes to a specific file (such as
-`WriteStatsJSON`) stays in that file. Routing does not change what SCIP
-prints: `display/verblevel` still applies, and `HideOutput` silences
-everything before it reaches the sink.
-
-During a concurrent solve the handler is copied to the worker instances, so
-the callback can be invoked from several threads at once. The sink's lock is
-held while the callback runs, so it must not call into SCIP — through any
-model — nor swap the sink: a nested message would wait for that lock
-forever.
-
-## Exact solving
-
-SCIP can solve in rational arithmetic end to end. Enable it on a fresh model
-— before plugins are included or a problem is read — and the whole solve
-runs exact:
-
-```go
-model := scip.NewModel().
-	EnableExactSolving(). // stage Init only
-	IncludeDefaultPlugins()
-model.ReadProb("problem.mps")
-solved := model.Solve()
-if sol, ok := solved.BestSol(); ok {
-	obj := sol.ObjValExact() // *big.Rat, e.g. 7615/1
-}
-```
-
-`Solution.ValExact` and `ObjValExact` report the solver's rationals as
-`*big.Rat` (convert to any decimal type yourself); on a model that did not
-solve exactly they return an error — there is no rational value to lift. The
-float64 accessors keep working and return the rationals' projections.
-
-Error messages (`SCIPerrorMessage`) are not part of the message handler:
-they go through one process-global hook. `scip.SetErrorLogFunc(fn)` redirects
-them for the whole process — not per model — and passes fragments through
-unbuffered; `scip.SetErrorLogFunc(nil)` restores stderr. The same
-no-calling-into-SCIP rule applies to fn.
-
-## Nonlinear constraints
-
-Build an expression tree from variables and constants and add it as a
-constraint; nothing touches SCIP until the constraint is added:
-
-```go
-x := model.AddVar(-1, 1, 1, "x", scip.VarTypeContinuous)
-y := model.AddVar(-1, 1, 1, "y", scip.VarTypeContinuous)
-model.AddConsNonlinear(x.Expr().Pow(2).Add(y.Expr().Pow(2)), scip.NegInfinity, 1, "disc")
-// or in SCIP's own syntax, resolved by variable name when added:
-model.AddConsNonlinear(scip.ParseExpr("<x>^2 + <y>^2"), scip.NegInfinity, 1, "disc")
-// or through the builder, mixing a linear part:
-model.Add(scip.NewCons().Expression(x.Expr().Mul(y.Expr())).Coef(x, 2).Le(1))
-```
-
-`Sum`, `WeightedSum`, `Product`, `Pow`, `SignPower`, `Exp`, `Log`, `Sin`,
-`Cos`, `Abs` and `Entropy` cover SCIP's expression handlers.
-
-## Plugins included by default
-
-`Heuristics`, `Separators` and `Presolvers` list SCIP's built-in plugins;
-`FindHeuristic`, `FindSeparator` and `FindPresolver` look one up by name. Each
-wrapper exposes its name and priority; heuristics and presolvers also report
-call statistics, and heuristics and separators have `SetFreq` so a plugin
-can be tuned or disabled without touching parameter strings.
-
-## Custom plugins
-
-Plugins (branch rules, pricers, heuristics, separators, event handlers,
-constraint handlers, node selectors) are Go interfaces registered through
-builders, mirroring russcip's traits:
-
-```go
-type firstBranchRule struct{}
-
-func (firstBranchRule) Execute(model scip.Model, _ scip.BranchRulePlugin,
-	cands []scip.BranchingCandidate) scip.BranchingResult {
-	return scip.BranchOn(cands[0])
-}
-
-model.Add(scip.NewBranchRule(firstBranchRule{}).Name("first"))
-```
-
-A heuristic's `Execute` receives its own plugin wrapper, so the solutions
-it creates can record it as their creator:
-
-```go
-func (h *myHeur) Execute(model scip.Model, heur scip.HeuristicPlugin,
-	_ scip.HeurTiming, _ bool) scip.HeurResult {
-	sol := model.CreateSolFor(heur) // sol.Heuristic() == heur afterwards
-	// ... set values, then:
-	if err := model.AddSol(&sol); err != nil {
-		return scip.HeurResultNoSolFound
-	}
-	return scip.HeurResultFoundSol
-}
-```
-
-SCIP credits the heuristic that is executing whenever a solution is added;
-`CreateSolFor` additionally records the creator on the solution, reported by
-`Solution.Heuristic`. Solutions added outside any heuristic's execution —
-MIP-start seeds before `Solve` — record a creator only through the `For`
-constructors.
-
-A constraint handler implements `Check` and `Enforce`; it may also implement
-`ConshdlrEnfoPS` (pseudo solutions), `ConshdlrSepa` (LP separation) and
-`ConshdlrProp` (propagation), which are registered only when present.
-
-A plugin that implements `Copyable` (`Copy() any`) is copied into the
-sub-SCIPs SCIP creates for LNS heuristics and `SolveConcurrent` workers,
-like a C plugin with a copy callback. Return the receiver for stateless
-plugins or a fresh object otherwise; copies in concurrent workers run on
-the worker threads. Panics raised inside a copy surface from the `Solve`
-of the model the user holds, and `GetData` inside a copy reads that model's
-datastore. Plugins without `Copy` never run in sub-SCIPs; a constraint
-handler without it marks every copy invalid, which disables SCIP's sub-MIP
-heuristics.
-
-## Differences from russcip
-
-- Go has no destructors: `Diver`/`Prober` are ended with an explicit
-  `End()` call, and SCIP instances are freed via finalizers or an explicit
-  `Model.Free()`. `AddSol` takes a `*Solution` so it can invalidate the
-  handle it consumes.
-- Panics inside plugin callbacks cannot unwind through C; they are captured
-  and re-raised when the enclosing `Solve` returns.
-- The generic datastore (`SetData`/`GetData`) is a Go-side registry instead
-  of a hidden plugin.
-- SCIP's thread pool for `SolveConcurrent` is one process-wide global that
-  each instance creates on its first concurrent solve and destroys when
-  freed. The binding keeps those balanced, so several models may run
-  concurrent solves during the process lifetime, but concurrent solves are
-  serialised across goroutines.
+Bug reports, questions and pull requests are welcome. The
+[contributing guide](CONTRIBUTING.md) covers the development setup, the
+test suite and the conventions the code follows.
 
 ## License
 
@@ -307,8 +126,8 @@ scipgo is licensed under the [MIT License](LICENSE), Copyright (c) 2026
 [Egoisuto Labs](https://egoisuto.com).
 
 It is a port of [russcip](https://github.com/scipopt/russcip) by Mohammed
-Ghannam and contributors, licensed under the Apache License 2.0; the derived
-parts (API design, tests, examples, `data/test`) keep that license, see
-[`LICENSE-russcip`](LICENSE-russcip) and [`NOTICE`](NOTICE). Keep both files
-with any redistribution. [SCIP](https://www.scipopt.org) itself is Apache-2.0
-and is linked, not bundled.
+Ghannam and contributors, licensed under the Apache License 2.0. The
+derived parts (API design, tests, examples, `data/test`) keep that
+license; see [`LICENSE-russcip`](LICENSE-russcip) and [`NOTICE`](NOTICE),
+and keep both files with any redistribution. [SCIP](https://www.scipopt.org)
+itself is Apache-2.0 and is linked, not bundled.
