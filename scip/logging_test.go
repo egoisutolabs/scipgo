@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -249,5 +250,120 @@ func TestConcurrentSolveWithSink(t *testing.T) {
 		if strings.Contains(l, "\n") {
 			t.Errorf("emitted line contains a newline: %q", l)
 		}
+	}
+}
+
+// TestSetLogFuncNilRestoresStdout checks the default handler comes back.
+func TestSetLogFuncNilRestoresStdout(t *testing.T) {
+	stdout := captureFd1(t, func() {
+		model := NewModel().SetLogWriter(io.Discard).SetLogFunc(nil).IncludeDefaultPlugins()
+		if _, err := model.ReadProb(testFile("simple.mps")); err != nil {
+			t.Errorf("read: %v", err)
+			return
+		}
+		model.Solve()
+	})
+	if !strings.Contains(stdout, "SCIP Status") {
+		t.Errorf("stdout not restored; %d bytes captured", len(stdout))
+	}
+}
+
+// TestSinkFlush checks partial lines do not vanish: a fragment without a
+// trailing newline is emitted by flush, which the message handler's free
+// callback calls when SCIP releases it.
+func TestSinkFlush(t *testing.T) {
+	var mu sync.Mutex
+	var got []LogLevel
+	var lines []string
+	sink := &logSink{fn: func(level LogLevel, line string) {
+		mu.Lock()
+		got = append(got, level)
+		lines = append(lines, line)
+		mu.Unlock()
+	}}
+	sink.write(LogInfo, "complete line\n")
+	sink.write(LogWarning, "partial ")
+	sink.write(LogWarning, "warning")
+	mu.Lock()
+	if len(lines) != 1 || lines[0] != "complete line" || got[0] != LogInfo {
+		mu.Unlock()
+		t.Fatalf("after writes: %v %q", got, lines)
+	}
+	mu.Unlock()
+	sink.flush()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) != 2 || lines[1] != "partial warning" || got[1] != LogWarning {
+		t.Fatalf("after flush: %v %q", got, lines)
+	}
+}
+
+// TestSinkPanicDoesNotCorruptNextLine checks the buffer is cleared before
+// the callback runs: a panic on one line must not leave it buffered and
+// concatenated onto the next.
+func TestSinkPanicDoesNotCorruptNextLine(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+	sink := &logSink{fn: func(_ LogLevel, line string) {
+		mu.Lock()
+		defer mu.Unlock()
+		if line == "boom" {
+			panic("callback panicked")
+		}
+		lines = append(lines, line)
+	}}
+	sink.write(LogInfo, "boom\n")
+	sink.write(LogInfo, "next line\n")
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) != 1 || lines[0] != "next line" {
+		t.Fatalf("lines after panic: %q", lines)
+	}
+}
+
+// TestSetErrorLogFunc checks the process-global error sink: an unknown
+// parameter produces SCIPerrorMessage fragments, passed through unbuffered.
+func TestSetErrorLogFunc(t *testing.T) {
+	var mu sync.Mutex
+	var joined strings.Builder
+	SetErrorLogFunc(func(line string) {
+		mu.Lock()
+		joined.WriteString(line)
+		mu.Unlock()
+	})
+	defer SetErrorLogFunc(nil)
+	model := NewModel().IncludeDefaultPlugins()
+	if _, err := model.SetIntParam("display/nosuchparam", 1); err == nil {
+		t.Fatal("expected an error for the unknown parameter")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !strings.Contains(joined.String(), "parameter <display/nosuchparam> unknown") {
+		t.Errorf("error sink missed the message; got %q", joined.String())
+	}
+}
+
+// TestErrorLogFuncPanic checks a panicking error sink reports on stderr
+// instead of unwinding through SCIP's C frames.
+func TestErrorLogFuncPanic(t *testing.T) {
+	SetErrorLogFunc(func(string) { panic("error sink panicked") })
+	defer SetErrorLogFunc(nil)
+	model := NewModel().IncludeDefaultPlugins()
+	if _, err := model.SetIntParam("display/nosuchparam", 1); err == nil {
+		t.Fatal("expected an error for the unknown parameter")
+	}
+}
+
+// TestSetLogFuncStageError checks the staging rule: the problem's
+// transformed space is off limits, so after a solve the swap is refused —
+// FreeTransform brings the model back to the Problem stage and allows it
+// again.
+func TestSetLogFuncStageError(t *testing.T) {
+	model := mustRead(t, NewModel().IncludeDefaultPlugins(), testFile("simple.mps"))
+	defer model.Free()
+	model.HideOutput().Solve()
+	err := model.TrySetLogFunc(func(LogLevel, string) {})
+	if err == nil || !strings.Contains(err.Error(), "not transformed") {
+		t.Fatalf("want staging error, got %v", err)
 	}
 }

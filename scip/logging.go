@@ -38,8 +38,9 @@ type logSink struct {
 }
 
 // write adds one fragment to its channel's buffer, emitting every complete
-// line it closes. A panic in the user callback is reported on stderr rather
-// than allowed to unwind through C.
+// line it closes. The buffer is reset before the callback runs, so a panic
+// in the user callback for one line cannot corrupt the next; the panic is
+// reported on stderr rather than allowed to unwind through C.
 func (s *logSink) write(level LogLevel, msg string) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -56,8 +57,9 @@ func (s *logSink) write(level LogLevel, msg string) {
 			return
 		}
 		b.WriteString(msg[:i])
-		s.emit(level, b.String())
+		line := b.String()
 		b.Reset()
+		s.emit(level, line)
 		msg = msg[i+1:]
 	}
 }
@@ -74,8 +76,9 @@ func (s *logSink) flush() {
 	defer s.mu.Unlock()
 	for level := range s.buf {
 		if b := &s.buf[level]; b.Len() > 0 {
-			s.emit(LogLevel(level), b.String())
+			line := b.String()
 			b.Reset()
+			s.emit(LogLevel(level), line)
 		}
 	}
 }
@@ -153,8 +156,12 @@ func GoMessageHdlrFree(id C.uintptr_t) (ret C.SCIP_RETCODE) {
 // and allows the swap again. Routing does not change what SCIP decides to
 // print: display/verblevel still applies, and HideOutput silences everything
 // before it reaches fn. fn may be called from several threads during a
-// concurrent solve and must not call back into the model. Passing nil
-// restores SCIP's default stdout handler.
+// concurrent solve and must not call back into the model. Concurrent solves
+// share the one handler, and SCIP's callbacks carry no worker identity, so
+// lines emitted from different workers can interleave at fragment
+// granularity — one emitted line may be assembled from two workers'
+// fragments; SCIP's own default stdout handler mixes them the same way.
+// Passing nil restores SCIP's default stdout handler.
 func (m Model) TrySetLogFunc(fn func(level LogLevel, line string)) error {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if err := m.guard("SetLogFunc"); err != nil {
@@ -216,22 +223,35 @@ var errLog struct {
 
 //export GoErrorPrinting
 func GoErrorPrinting(msg *C.char) {
+	// The mutex is held across the callback: calls are serialized like the
+	// per-model sink's, and the panic recovery boundary applies here too —
+	// this runs under SCIP's C frames.
 	errLog.mu.Lock()
-	fn := errLog.fn
-	errLog.mu.Unlock()
-	if fn != nil {
-		fn(goString(msg))
+	defer errLog.mu.Unlock()
+	if errLog.fn == nil {
+		return
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "scip: panic in error log callback: %v\n", r)
+		}
+	}()
+	errLog.fn(goString(msg))
 }
 
 // SetErrorLogFunc routes SCIP's error messages (SCIPerrorMessage), which are
 // global to the process, to fn. Unlike the message channels, error messages
 // arrive as fragments and are passed through unchanged, without buffering.
-// Passing nil restores the default (stderr).
+// Calls to fn are serialized against each other and against SetErrorLogFunc
+// itself, so fn must not call SetErrorLogFunc. Passing nil restores the
+// default (stderr).
 func SetErrorLogFunc(fn func(line string)) {
+	// The whole transition — Go state and C hook — happens under one lock,
+	// so enable/disable cannot interleave into an installed hook with no
+	// function, or a function with no hook.
 	errLog.mu.Lock()
+	defer errLog.mu.Unlock()
 	errLog.fn = fn
-	errLog.mu.Unlock()
 	if fn != nil {
 		C.scipgo_setErrorPrinting()
 	} else {
