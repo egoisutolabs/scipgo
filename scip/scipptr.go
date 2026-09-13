@@ -639,11 +639,15 @@ const interruptForwarderName = "scipgo_interrupt"
 // deadlocks for threads the runtime did not create. A Copyable event handler
 // copied into every worker sidesteps both: it runs on a solver thread, where
 // interrupting the instance it executes in is always legal. The mask gives
-// the same granularity as SCIP's own interrupt checks: PRESOLVEROUND between
-// presolve rounds, NODEFOCUSED between nodes, and LP events between the LP
-// solves of a single node's cut-and-price loop — without those, a stop
-// requested while a worker was presolving or mid-node would wait for the
-// next node.
+// the same granularity as SCIP's own interrupt checks wherever SCIP emits
+// events for them: PRESOLVEROUND between presolve rounds, NODEFOCUSED for
+// every node — non-LP ones included, so node-completion events are not
+// needed — and the LP events between the LP solves of a single node's
+// cut-and-price loop. Node completion is deliberately not in the mask: a
+// worker whose last node completes has finished, and a solve that finishes
+// returns its result rather than a manufactured interrupt. Events SCIP does
+// not emit — inside a worker's pricing loop, say — delay a forwarded stop
+// until the next boundary.
 type interruptForwarder struct{}
 
 func (interruptForwarder) GetEventMask() EventMask {
@@ -670,7 +674,11 @@ func (interruptForwarder) Copy() any { return interruptForwarder{} }
 // includeInterruptForwarder adds the forwarder once. An instance may also
 // have received it through a plugin copy (SCIP copying a model's plugins
 // into a sub-SCIP or another model copies Copyable ones wholesale), which
-// does not go through here, so existence is checked by name as well.
+// does not go through here, so existence is checked by name — verifying
+// through the Go plugin registry that the handler found under the name is
+// really this forwarder, since the name is user-visible and reserved: an
+// application squatting on it gets the duplicate-include error from SCIP
+// rather than silently losing the ability to stop concurrent solves.
 func (s *Scip) includeInterruptForwarder() error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	if s.fwdIncluded {
@@ -684,9 +692,11 @@ func (s *Scip) includeInterruptForwarder() error {
 	}
 	cn := cString(interruptForwarderName)
 	defer func() { freeCString(cn) }()
-	if C.SCIPfindEventhdlr(s.raw, cn) != nil {
-		s.fwdIncluded = true
-		return nil
+	if h := C.SCIPfindEventhdlr(s.raw, cn); h != nil {
+		if _, ours := plugins.get(uintptr(C.scipgo_eventhdlrId(h))).(interruptForwarder); ours {
+			s.fwdIncluded = true
+			return nil
+		}
 	}
 	if err := s.includeEventhdlr(interruptForwarderName, "relays scip.Interrupt into concurrent workers", interruptForwarder{}); err != nil {
 		return err
@@ -704,9 +714,11 @@ func (s *Scip) includeInterruptForwarder() error {
 // solves and the frees of concurrent-solved instances, which one global pool
 // requires anyway.
 var tpiPool struct {
-	sync.Mutex
+	sem  chan struct{} // take to use the pool; a channel, not a Mutex, so a wait for it can be abandoned without a stranded goroutine
 	live bool
 }
+
+func init() { tpiPool.sem = make(chan struct{}, 1) }
 
 // holdsTPI reports whether this instance ran a concurrent solve, i.e. whether
 // its SCIPfree will destroy the thread pool.
@@ -723,32 +735,24 @@ func tpiInit(nthreads int32) error {
 	return nil
 }
 
-// tpiPoolLock acquires the pool lock, giving the wait up when wait closes
-// first. The goroutine that loses that race releases the lock the moment it
-// learns nobody will claim it, so an abandoned wait never leaks the lock.
-func tpiPoolLock(wait <-chan struct{}) bool {
+// tpiPoolAcquire takes the pool, giving the wait up when wait closes first.
+// A send on the semaphore is cancellable, so an abandoned wait leaves no
+// goroutine blocked behind whoever holds the pool.
+func tpiPoolAcquire(wait <-chan struct{}) bool {
 	if wait == nil {
-		tpiPool.Lock()
+		tpiPool.sem <- struct{}{}
 		return true
 	}
-	locked := make(chan struct{})
-	abandon := make(chan struct{})
-	go func() {
-		tpiPool.Lock()
-		select {
-		case locked <- struct{}{}:
-		case <-abandon:
-			tpiPool.Unlock()
-		}
-	}()
 	select {
-	case <-locked:
+	case tpiPool.sem <- struct{}{}:
 		return true
 	case <-wait:
-		close(abandon)
 		return false
 	}
 }
+
+// tpiPoolRelease gives the pool back.
+func tpiPoolRelease() { <-tpiPool.sem }
 
 // solveConcurrent runs SCIPsolveConcurrent under the process-wide pool lock.
 // wait, when non-nil, lets the lock wait be abandoned — for a context that
@@ -763,10 +767,10 @@ func (s *Scip) solveConcurrent(wait <-chan struct{}) (abandoned bool, err error)
 			return false, err
 		}
 	}
-	if !tpiPoolLock(wait) {
+	if !tpiPoolAcquire(wait) {
 		return true, nil
 	}
-	defer tpiPool.Unlock()
+	defer tpiPoolRelease()
 	if r := s.root(); r != nil {
 		r.solving.Add(1)
 		defer r.solving.Add(-1)
@@ -798,8 +802,8 @@ func (s *Scip) scipFree(raw *C.SCIP) error {
 	if !s.holdsTPI() {
 		return retcodeError(C.SCIPfree(&raw))
 	}
-	tpiPool.Lock()
-	defer tpiPool.Unlock()
+	tpiPoolAcquire(nil)
+	defer tpiPoolRelease()
 	if !tpiPool.live {
 		if err := tpiInit(1); err != nil {
 			return err // SCIPfree would crash in SCIPtpiExit; leaking beats crashing

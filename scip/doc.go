@@ -50,10 +50,13 @@
 // stop the solve and return the context error wrapped in an *Error alongside
 // the interrupted model, whose status is StatusUserInterrupt and whose
 // incumbent, if any, is still available. A stop is noticed between nodes,
-// presolve rounds, LP iterations and pricing rounds; a single long operation,
-// such as a big root LP or a slow plugin callback, delays it until that
-// operation returns, and a plugin can check its own context between
-// callbacks. A concurrent solve is stopped through an event handler the
-// binding includes automatically; one caveat applies, documented on
+// presolve rounds, LP iterations and pricing rounds; the workers of a
+// concurrent solve, which are separate SCIP instances stopped through a
+// relayed event handler, at node, presolve-round and LP-solve boundaries
+// instead, since SCIP emits no events inside their pricing loops. A single
+// long operation, such as a big root LP or a slow plugin callback, delays it
+// until that operation returns, and a plugin can check its own context
+// between callbacks. A concurrent solve is stopped through an event handler
+// the binding includes automatically; one caveat applies, documented on
 // SolveConcurrentContext.
 package scip

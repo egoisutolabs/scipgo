@@ -206,13 +206,13 @@ func TestSolveConcurrentContextWaitingForPool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tpiPool.Lock()
+	tpiPoolAcquire(nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
 	solved, err := model.SolveConcurrentContext(ctx)
-	tpiPool.Unlock()
+	tpiPoolRelease()
 	if elapsed := time.Since(start); elapsed > 30*time.Second {
 		t.Fatalf("wait ran %v past the deadline", elapsed)
 	}
