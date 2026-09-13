@@ -191,19 +191,34 @@ func (m Model) SetLogFunc(fn func(level LogLevel, line string)) Model {
 	return m
 }
 
-// SetLogWriter routes SCIP's output to w, newline-terminated; see
-// TrySetLogFunc for the staging and threading rules.
-func (m Model) SetLogWriter(w io.Writer) Model {
-	return m.SetLogFunc(func(_ LogLevel, line string) {
+// TrySetLogWriter routes SCIP's output to w, newline-terminated; see
+// TrySetLogFunc for the staging and threading rules. It returns an error
+// rather than panicking when the sink cannot be installed.
+func (m Model) TrySetLogWriter(w io.Writer) error {
+	if w == nil {
+		return m.invalid("SetLogWriter", RetcodeInvalidData, "nil io.Writer")
+	}
+	return m.TrySetLogFunc(func(_ LogLevel, line string) {
 		fmt.Fprintln(w, line)
 	})
 }
 
-// SetLogger routes SCIP's output to logger: LogInfo and LogDialog lines
-// become Info records and LogWarning lines Warn records, with the line as the
-// message; see TrySetLogFunc for the staging and threading rules.
-func (m Model) SetLogger(logger *slog.Logger) Model {
-	return m.SetLogFunc(func(level LogLevel, line string) {
+// SetLogWriter routes SCIP's output to w; see TrySetLogWriter. It panics on
+// failure.
+func (m Model) SetLogWriter(w io.Writer) Model {
+	must(m.TrySetLogWriter(w))
+	return m
+}
+
+// TrySetLogger routes SCIP's output to logger: LogInfo and LogDialog lines
+// become Info records and LogWarning lines Warn records, with the line as
+// the message; see TrySetLogFunc for the staging and threading rules. It
+// returns an error rather than panicking when the sink cannot be installed.
+func (m Model) TrySetLogger(logger *slog.Logger) error {
+	if logger == nil {
+		return m.invalid("SetLogger", RetcodeInvalidData, "nil *slog.Logger")
+	}
+	return m.TrySetLogFunc(func(level LogLevel, line string) {
 		switch level {
 		case LogWarning:
 			logger.Warn(line)
@@ -211,6 +226,13 @@ func (m Model) SetLogger(logger *slog.Logger) Model {
 			logger.Info(line)
 		}
 	})
+}
+
+// SetLogger routes SCIP's output to logger; see TrySetLogger. It panics on
+// failure.
+func (m Model) SetLogger(logger *slog.Logger) Model {
+	must(m.TrySetLogger(logger))
+	return m
 }
 
 // errLog holds the process-global error sink. Error messages are not part of

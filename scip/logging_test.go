@@ -368,4 +368,20 @@ func TestSetLogFuncStageError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "not transformed") {
 		t.Fatalf("want staging error, got %v", err)
 	}
+	// The adapters have Try forms too, with the same staging rule, and
+	// reject nil sinks outright.
+	if err := model.TrySetLogWriter(io.Discard); err == nil {
+		t.Error("TrySetLogWriter in a transformed stage should fail")
+	}
+	if err := model.TrySetLogger(slog.New(&recordingHandler{})); err == nil {
+		t.Error("TrySetLogger in a transformed stage should fail")
+	}
+	fresh := NewModel().IncludeDefaultPlugins()
+	defer fresh.Free()
+	if err := fresh.TrySetLogWriter(nil); err == nil {
+		t.Error("TrySetLogWriter(nil) should fail")
+	}
+	if err := fresh.TrySetLogger(nil); err == nil {
+		t.Error("TrySetLogger(nil) should fail")
+	}
 }
