@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 	"weak"
 )
@@ -35,6 +36,20 @@ type Scip struct {
 	// handle, original ones included.
 	transGen uint64
 	probGen  uint64
+	// stopFlag is the Go-side half of Interrupt: set by a caller that wants
+	// the solve stopped, relayed to concurrent workers and sub-SCIPs by the
+	// interruptForwarder event handler (below). Like SCIP's own
+	// user-interrupt flag it is cleared when the next solve starts.
+	stopFlag atomic.Bool
+	// solving counts solve calls in flight on this instance: 1 from the
+	// moment Scip.solve/solveConcurrent enters C until it returns. It is the
+	// Go-side answer to "is a solve running", which cannot be read from
+	// SCIP's stage field cross-thread, and SCIPinterruptSolve is legal in
+	// exactly the stages a solve call brackets.
+	solving atomic.Int32
+	// fwdIncluded records that interruptForwarder has been included, so it
+	// is added at most once per instance.
+	fwdIncluded bool
 	// Variables added during solving, to be released after solving.
 	varsAddedInSolving []*C.SCIP_VAR
 	mu                 sync.Mutex
@@ -455,7 +470,13 @@ func (s *Scip) write(path, ext string, symb bool) error {
 
 func (s *Scip) includeDefaultPlugins() error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	return retcodeError(C.SCIPincludeDefaultPlugins(s.raw))
+	if err := retcodeError(C.SCIPincludeDefaultPlugins(s.raw)); err != nil {
+		return err
+	}
+	// Included here so every conventionally built model can be interrupted
+	// in every stage, including a concurrent solve re-started from a stage
+	// where plugins can no longer be added.
+	return s.includeInterruptForwarder()
 }
 
 // statisticsJSON returns the solving statistics in JSON format
@@ -531,9 +552,157 @@ func (s *Scip) conss() []*C.SCIP_CONS {
 	return out
 }
 
+// solve brackets the native solve call with the instance's solve counter;
+// every other interrupt mechanism keys off that counter or the stop flag.
 func (s *Scip) solve() error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if r := s.root(); r != nil {
+		r.solving.Add(1)
+		defer r.solving.Add(-1)
+	}
 	return retcodeError(C.SCIPsolve(s.raw))
+}
+
+// clearInterrupt discards a leftover stop request, mirroring the reset SCIP's
+// SCIPsolve does to its own user-interrupt flag. It runs before a solve is
+// started — before the context watcher exists in the SolveContext path, so a
+// cancellation observed from there on cannot be wiped by solve startup.
+func (s *Scip) clearInterrupt() {
+	if r := s.root(); r != nil {
+		r.stopFlag.Store(false)
+	}
+}
+
+// interrupt asks SCIP to stop the solve in progress on s's root at the next
+// opportunity: between nodes, presolve rounds, LP iterations and pricing
+// rounds, but only once the currently running plugin callback has returned.
+// It may be called from any goroutine and is a no-op if the instance is gone
+// or nothing is solving. A stop request left over from before a solve is
+// discarded when the next one starts.
+func (s *Scip) interrupt() {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	r := s.root()
+	if r == nil || r.raw == nil || r.freed.Load() {
+		return
+	}
+	r.stopFlag.Store(true)
+	// SCIPinterruptSolve is SCIP's own asynchronous Ctrl-C path: a single
+	// boolean write the solving thread polls, safe from any thread. It is
+	// refused outside PROBLEM..FREETRANS, which is why it is issued only
+	// while the counter brackets a solve call; SCIP's stage field itself
+	// must not be read here, as the solving thread may be changing it.
+	if r.solving.Load() > 0 {
+		C.SCIPinterruptSolve(r.raw)
+	}
+}
+
+// interruptPollInterval is how often interruptWhile re-issues the native
+// interrupt while a solve runs.
+const interruptPollInterval = 2 * time.Millisecond
+
+// interruptWhile is the context-watcher half of SolveContext: it makes the
+// stop request and keeps re-issuing the native interrupt until ch — closed
+// when the solve call returns — says the solve is over. The re-issue is what
+// makes a cancellation delivered during solve startup survive: SCIPsolve and
+// SCIPsolveConcurrent reset SCIP's interrupt flag once on entry, and any
+// issue after that reset sticks until the solving loop notices it. Only
+// SCIPinterruptSolve is called (see interrupt); the loop ends within one
+// interval of ch closing, before SolveContext returns to its caller.
+func (s *Scip) interruptWhile(ch <-chan struct{}) {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	r := s.root()
+	if r == nil || r.raw == nil {
+		return
+	}
+	r.stopFlag.Store(true)
+	for {
+		if !r.freed.Load() && r.solving.Load() > 0 {
+			C.SCIPinterruptSolve(r.raw)
+		}
+		select {
+		case <-ch:
+			return
+		case <-time.After(interruptPollInterval):
+		}
+	}
+}
+
+// interruptForwarderName is the SCIP name of the forwarder event handler.
+const interruptForwarderName = "scipgo_interrupt"
+
+// interruptForwarder relays a stop request into the SCIP instance a callback
+// runs in. A sequential solve is stopped by SCIPinterruptSolve on the main
+// instance directly, but the workers of a concurrent solve (and the sub-SCIPs
+// of LNS heuristics) are separate SCIP instances that never see the main
+// instance's flag, and the syncstore flag meant to stop them cannot be
+// written from a Go thread while SCIP's OpenMP thread pool is busy: its lock
+// deadlocks for threads the runtime did not create. A Copyable event handler
+// copied into every worker sidesteps both: it runs on a solver thread, where
+// interrupting the instance it executes in is always legal. The mask gives
+// the same granularity as SCIP's own interrupt checks wherever SCIP emits
+// events for them: PRESOLVEROUND between presolve rounds, NODEFOCUSED for
+// every node — non-LP ones included, so node-completion events are not
+// needed — and the LP events between the LP solves of a single node's
+// cut-and-price loop. Node completion is deliberately not in the mask: a
+// worker whose last node completes has finished, and a solve that finishes
+// returns its result rather than a manufactured interrupt. Events SCIP does
+// not emit — inside a worker's pricing loop, say — delay a forwarded stop
+// until the next boundary.
+type interruptForwarder struct{}
+
+func (interruptForwarder) GetEventMask() EventMask {
+	return EventMaskNodeFocused | EventMaskPresolveRound | EventMaskLpEvent
+}
+
+func (interruptForwarder) Execute(model Model, h EventhdlrPlugin, event Event) {
+	defer runtime.KeepAlive(model.scip.root()) // pin the owner for the flag read
+	s := model.scip
+	r := s.root()
+	if r == nil || !r.stopFlag.Load() {
+		return
+	}
+	// s.raw is the instance this callback executes in — the main instance
+	// for a sequential solve, one worker or sub-SCIP copy otherwise — and
+	// cannot be freed before the callback returns, so unlike the owner it
+	// needs no pinning.
+	C.SCIPinterruptSolve(s.raw)
+}
+
+// Copyable; see interruptForwarder.
+func (interruptForwarder) Copy() any { return interruptForwarder{} }
+
+// includeInterruptForwarder adds the forwarder once. An instance may also
+// have received it through a plugin copy (SCIP copying a model's plugins
+// into a sub-SCIP or another model copies Copyable ones wholesale), which
+// does not go through here, so existence is checked by name — verifying
+// through the Go plugin registry that the handler found under the name is
+// really this forwarder, since the name is user-visible and reserved: an
+// application squatting on it gets the duplicate-include error from SCIP
+// rather than silently losing the ability to stop concurrent solves.
+func (s *Scip) includeInterruptForwarder() error {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if s.fwdIncluded {
+		return nil
+	}
+	// SCIPincludeEventhdlr is legal in Init and Problem only; a solve
+	// started from a later stage keeps whatever forwarder was included
+	// before, if any.
+	if st := Stage(int(C.SCIPgetStage(s.raw))); st > StageProblem {
+		return nil
+	}
+	cn := cString(interruptForwarderName)
+	defer func() { freeCString(cn) }()
+	if h := C.SCIPfindEventhdlr(s.raw, cn); h != nil {
+		if _, ours := plugins.get(uintptr(C.scipgo_eventhdlrId(h))).(interruptForwarder); ours {
+			s.fwdIncluded = true
+			return nil
+		}
+	}
+	if err := s.includeEventhdlr(interruptForwarderName, "relays scip.Interrupt into concurrent workers", interruptForwarder{}); err != nil {
+		return err
+	}
+	s.fwdIncluded = true
+	return nil
 }
 
 // SCIP's task processing interface is one process-wide thread pool: an
@@ -545,9 +714,11 @@ func (s *Scip) solve() error {
 // solves and the frees of concurrent-solved instances, which one global pool
 // requires anyway.
 var tpiPool struct {
-	sync.Mutex
+	sem  chan struct{} // take to use the pool; a channel, not a Mutex, so a wait for it can be abandoned without a stranded goroutine
 	live bool
 }
+
+func init() { tpiPool.sem = make(chan struct{}, 1) }
 
 // holdsTPI reports whether this instance ran a concurrent solve, i.e. whether
 // its SCIPfree will destroy the thread pool.
@@ -564,28 +735,64 @@ func tpiInit(nthreads int32) error {
 	return nil
 }
 
-func (s *Scip) solveConcurrent() error {
+// tpiPoolAcquire takes the pool, giving the wait up when wait closes first.
+// A send on the semaphore is cancellable, so an abandoned wait leaves no
+// goroutine blocked behind whoever holds the pool.
+func tpiPoolAcquire(wait <-chan struct{}) bool {
+	if wait == nil {
+		tpiPool.sem <- struct{}{}
+		return true
+	}
+	select {
+	case tpiPool.sem <- struct{}{}:
+		return true
+	case <-wait:
+		return false
+	}
+}
+
+// tpiPoolRelease gives the pool back.
+func tpiPoolRelease() { <-tpiPool.sem }
+
+// solveConcurrent runs SCIPsolveConcurrent under the process-wide pool lock.
+// wait, when non-nil, lets the lock wait be abandoned — for a context that
+// is done waiting for another model's concurrent solve — in which case no
+// lock is held, no solve is run and abandoned reports true.
+func (s *Scip) solveConcurrent(wait <-chan struct{}) (abandoned bool, err error) {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	tpiPool.Lock()
-	defer tpiPool.Unlock()
+	// The workers are separate SCIP instances; without the forwarder a
+	// concurrent solve could not be stopped before it runs to completion.
+	if r := s.root(); r != nil {
+		if err := r.includeInterruptForwarder(); err != nil {
+			return false, err
+		}
+	}
+	if !tpiPoolAcquire(wait) {
+		return true, nil
+	}
+	defer tpiPoolRelease()
+	if r := s.root(); r != nil {
+		r.solving.Add(1)
+		defer r.solving.Add(-1)
+	}
 	if s.holdsTPI() {
 		// Re-solve: SCIP reuses its solvers and expects the pool to exist.
 		if !tpiPool.live {
 			n, _ := s.intParam("parallel/maxnthreads") // an upper bound on the solver count
 			if err := tpiInit(max(n, 1)); err != nil {
-				return err
+				return false, err
 			}
 		}
 	} else if tpiPool.live {
 		// SCIP is about to create a pool; drop the one another instance left.
 		if err := retcodeError(C.SCIPtpiExit()); err != nil {
-			return err
+			return false, err
 		}
 		tpiPool.live = false
 	}
-	err := retcodeError(C.SCIPsolveConcurrent(s.raw))
+	err = retcodeError(C.SCIPsolveConcurrent(s.raw))
 	tpiPool.live = tpiPool.live || s.holdsTPI()
-	return err
+	return false, err
 }
 
 // scipFree calls SCIPfree, giving it a thread pool to destroy if this
@@ -595,8 +802,8 @@ func (s *Scip) scipFree(raw *C.SCIP) error {
 	if !s.holdsTPI() {
 		return retcodeError(C.SCIPfree(&raw))
 	}
-	tpiPool.Lock()
-	defer tpiPool.Unlock()
+	tpiPoolAcquire(nil)
+	defer tpiPoolRelease()
 	if !tpiPool.live {
 		if err := tpiInit(1); err != nil {
 			return err // SCIPfree would crash in SCIPtpiExit; leaking beats crashing

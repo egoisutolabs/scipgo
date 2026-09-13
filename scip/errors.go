@@ -66,6 +66,7 @@ type Error struct {
 	Stage   Stage   // SCIP stage at the time of the call
 	Retcode Retcode // SCIP's return code
 	Detail  string  // optional context: a parameter, plugin or variable name
+	Cause   error   // optional underlying error, e.g. the context error of a cancelled SolveContext; unwrappable
 }
 
 func (e *Error) Error() string {
@@ -73,11 +74,21 @@ func (e *Error) Error() string {
 	if e.Detail != "" {
 		s += " (" + e.Detail + ")"
 	}
+	if e.Cause != nil {
+		s += ": " + e.Cause.Error()
+	}
 	return s
 }
 
-// Unwrap returns the Retcode, so errors.Is(err, scip.RetcodeInvalidCall) works.
-func (e *Error) Unwrap() error { return e.Retcode }
+// Unwrap returns the Retcode — and any Cause alongside it — so both
+// errors.Is(err, scip.RetcodeInvalidCall) and, for a cancelled solve,
+// errors.Is(err, context.DeadlineExceeded) work.
+func (e *Error) Unwrap() error {
+	if e.Cause != nil {
+		return errors.Join(e.Retcode, e.Cause)
+	}
+	return e.Retcode
+}
 
 // CallbackPanic is returned by TrySolve, TrySolveConcurrent, TryFreeTransform
 // and AddSol when a panic escaped a plugin callback during the call. Panics
