@@ -192,8 +192,10 @@ model, err := scip.NewModel().IncludeDefaultPlugins().ReadProb("instance.lp")
 read include `.lp`, `.mps`, `.opb`, `.cip`, `.fzn`, `.pip`, `.wbo` and,
 when SCIP was built with it, `.zpl`. Compressed `.gz` input works when
 SCIP was built with zlib. On failure the zero `Model` is returned with the
-error; the receiver may then hold a partially read problem, so call
-`CreateProb` or `FreeTransform` before reusing it.
+error. The receiver may then hold a partially read problem in the Problem
+stage; `FreeTransform` does not discard it, since it only releases a
+transformed problem. Call `CreateProb` to replace it, or free the model
+and start a new one.
 
 ```go
 err := model.Write("instance.lp", "lp", true)
