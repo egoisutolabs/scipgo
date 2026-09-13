@@ -36,6 +36,11 @@ type Scip struct {
 	// handle, original ones included.
 	transGen uint64
 	probGen  uint64
+	// logSink is the strong reference to the currently installed log sink;
+	// the global registry holds it only weakly, so a callback capturing its
+	// Model cannot root the model through the registry and block its
+	// finalizer.
+	logSink *logSink
 	// stopFlag is the Go-side half of Interrupt: set by a caller that wants
 	// the solve stopped, relayed to concurrent workers and sub-SCIPs by the
 	// interruptForwarder event handler (below). Like SCIP's own

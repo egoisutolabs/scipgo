@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // captureFd1 redirects file descriptor 1 — which C's stdout writes to, not
@@ -167,8 +170,10 @@ func TestSetLogger(t *testing.T) {
 	// logger.
 	logSinks.mu.Lock()
 	sinks := make([]*logSink, 0, len(logSinks.m))
-	for _, s := range logSinks.m {
-		sinks = append(sinks, s)
+	for _, wp := range logSinks.m {
+		if s := wp.Value(); s != nil {
+			sinks = append(sinks, s)
+		}
 	}
 	logSinks.mu.Unlock()
 	if len(sinks) == 0 {
@@ -384,4 +389,49 @@ func TestSetLogFuncStageError(t *testing.T) {
 	if err := fresh.TrySetLogger(nil); err == nil {
 		t.Error("TrySetLogger(nil) should fail")
 	}
+	// A typed nil writer inside the interface is caught too, instead of
+	// installing a sink that panics on the first emitted line.
+	var bufPtr *bytes.Buffer
+	if err := fresh.TrySetLogWriter(bufPtr); err == nil || !errors.Is(err, RetcodeInvalidData) {
+		t.Errorf("TrySetLogWriter(typed nil) = %v, want RetcodeInvalidData", err)
+	}
+	// Errors carry the adapter's own operation name.
+	if e := asError(t, model.TrySetLogWriter(io.Discard)); e.Op != "SetLogWriter" {
+		t.Errorf("TrySetLogWriter error Op = %q, want SetLogWriter", e.Op)
+	}
+	if e := asError(t, model.TrySetLogger(slog.New(&recordingHandler{}))); e.Op != "SetLogger" {
+		t.Errorf("TrySetLogger error Op = %q, want SetLogger", e.Op)
+	}
+}
+
+// TestDroppedModelDoesNotLeakSink checks the ownership direction: the
+// registry holds sinks only weakly, and the model holds the strong
+// reference, so the tempting pattern — a callback capturing its own Model —
+// cannot root the model through an immortal global map and block its
+// finalizer from ever freeing SCIP.
+func TestDroppedModelDoesNotLeakSink(t *testing.T) {
+	install := func() {
+		model := NewModel().IncludeDefaultPlugins()
+		model.SetLogFunc(func(_ LogLevel, _ string) { _ = model }) // captures the model
+		// model dropped without Free: the finalizer must be able to run,
+		// SCIPfree fires the handler's free callback, and the registry
+		// entry disappears. The variable is cleared to drop it while the
+		// closure keeps a captured reference — leaving it live in the
+		// enclosing frame would root the model and test nothing.
+		model = Model{}
+	}
+	install()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		runtime.GC()
+		runtime.GC()
+		logSinks.mu.Lock()
+		n := len(logSinks.m)
+		logSinks.mu.Unlock()
+		if n == 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("sink registry entry survived its dropped model")
 }

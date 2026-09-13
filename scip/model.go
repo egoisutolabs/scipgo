@@ -559,7 +559,7 @@ func (m Model) TryIncludeBranchRule(name, desc string, priority, maxdepth int32,
 	if err := m.guard("IncludeBranchRule"); err != nil {
 		return err
 	}
-	if isNilPlugin(rule) {
+	if isNilInterface(rule) {
 		return m.invalid("IncludeBranchRule", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeBranchRule", m.scip.includeBranchRule(name, desc, priority, maxdepth, maxbounddist, rule), name)
@@ -577,7 +577,7 @@ func (m Model) TryIncludeNodesel(name, desc string, stdPriority, memSavePriority
 	if err := m.guard("IncludeNodesel"); err != nil {
 		return err
 	}
-	if isNilPlugin(nodesel) {
+	if isNilInterface(nodesel) {
 		return m.invalid("IncludeNodesel", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeNodesel", m.scip.includeNodesel(name, desc, stdPriority, memSavePriority, nodesel), name)
@@ -594,7 +594,7 @@ func (m Model) TryIncludeHeur(name, desc string, priority int32, dispchar byte, 
 	if err := m.guard("IncludeHeur"); err != nil {
 		return err
 	}
-	if isNilPlugin(heur) {
+	if isNilInterface(heur) {
 		return m.invalid("IncludeHeur", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeHeur", m.scip.includeHeur(name, desc, priority, dispchar, freq, freqofs, maxdepth, timing, usessubscip, heur), name)
@@ -611,7 +611,7 @@ func (m Model) TryIncludeSeparator(name, desc string, priority, freq int32, maxb
 	if err := m.guard("IncludeSeparator"); err != nil {
 		return err
 	}
-	if isNilPlugin(sep) {
+	if isNilInterface(sep) {
 		return m.invalid("IncludeSeparator", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeSeparator", m.scip.includeSeparator(name, desc, priority, freq, maxbounddist, usesubscip, delay, sep), name)
@@ -628,7 +628,7 @@ func (m Model) TryIncludeEventhdlr(name, desc string, eventhdlr Eventhdlr) error
 	if err := m.guard("IncludeEventhdlr"); err != nil {
 		return err
 	}
-	if isNilPlugin(eventhdlr) {
+	if isNilInterface(eventhdlr) {
 		return m.invalid("IncludeEventhdlr", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeEventhdlr", m.scip.includeEventhdlr(name, desc, eventhdlr), name)
@@ -645,7 +645,7 @@ func (m Model) TryIncludePricer(name, desc string, priority int32, delay bool, p
 	if err := m.guard("IncludePricer"); err != nil {
 		return err
 	}
-	if isNilPlugin(pricer) {
+	if isNilInterface(pricer) {
 		return m.invalid("IncludePricer", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludePricer", m.scip.includePricer(name, desc, priority, delay, pricer), name)
@@ -666,7 +666,7 @@ func (m Model) TryIncludeConshdlr(name, desc string, enfopriority, checkpriority
 	if err := m.guard("IncludeConshdlr"); err != nil {
 		return err
 	}
-	if isNilPlugin(conshdlr) {
+	if isNilInterface(conshdlr) {
 		return m.invalid("IncludeConshdlr", RetcodeInvalidData, "nil plugin")
 	}
 	return m.wrap("IncludeConshdlr", m.scip.includeConshdlr(name, desc, enfopriority, checkpriority, defaultConshdlrOpts, conshdlr), name)

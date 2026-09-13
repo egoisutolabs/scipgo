@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"weak"
 )
 
 // LogLevel distinguishes SCIP's three message channels.
@@ -88,36 +89,40 @@ func (s *logSink) emit(level LogLevel, line string) {
 
 // logSinks maps the registry id stored in the message handler's data slot to
 // its sink, exactly as the plugin registry works: a Go pointer cannot live in
-// C memory, so C stores the id instead. The free callback (fired when SCIP
-// releases the handler, including from SCIPfree) deletes the entry after
-// flushing.
+// C memory, so C stores the id instead. The registry holds the sink only
+// weakly — the owning Scip holds the strong reference — because a callback
+// that captures its Model must not root the model through an immortal global
+// map: that would stop the finalizer from ever running SCIPfree, and the
+// free callback (fired when SCIP releases the handler, including from
+// SCIPfree) deletes the entry.
 var logSinks = struct {
 	mu   sync.Mutex
 	next uintptr
-	m    map[uintptr]*logSink
-}{m: make(map[uintptr]*logSink)}
+	m    map[uintptr]weak.Pointer[logSink]
+}{m: make(map[uintptr]weak.Pointer[logSink])}
 
 func putLogSink(s *logSink) uintptr {
 	logSinks.mu.Lock()
 	defer logSinks.mu.Unlock()
 	logSinks.next++
-	logSinks.m[logSinks.next] = s
+	logSinks.m[logSinks.next] = weak.Make(s)
 	return logSinks.next
 }
 
 func getLogSink(id uintptr) *logSink {
 	logSinks.mu.Lock()
 	defer logSinks.mu.Unlock()
-	return logSinks.m[id]
+	return logSinks.m[id].Value()
 }
 
-// delLogSink removes the sink and hands it back for a final flush.
-func delLogSink(id uintptr) *logSink {
+// delLogSink removes the sink and hands it back for a final flush, if it is
+// still alive.
+func delLogSink(id uintptr) (*logSink, bool) {
 	logSinks.mu.Lock()
 	defer logSinks.mu.Unlock()
-	s := logSinks.m[id]
+	wp := logSinks.m[id]
 	delete(logSinks.m, id)
-	return s
+	return wp.Value(), true
 }
 
 //export GoMessageInfo
@@ -143,10 +148,42 @@ func GoMessageDialog(id C.uintptr_t, msg *C.char) {
 
 //export GoMessageHdlrFree
 func GoMessageHdlrFree(id C.uintptr_t) (ret C.SCIP_RETCODE) {
-	if s := delLogSink(uintptr(id)); s != nil {
+	if s, ok := delLogSink(uintptr(id)); ok {
 		s.flush()
 	}
 	return C.SCIP_OKAY
+}
+
+// trySetLog is the one installation path behind SetLogFunc and both
+// adapters, so the staging rule is implemented once; op names the public
+// method the caller used, which is what errors carry.
+func (m Model) trySetLog(op string, fn func(level LogLevel, line string)) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.guard(op); err != nil {
+		return err
+	}
+	if !stages(StageInit, StageProblem).has(m.scip.stage()) {
+		return m.invalid(op, RetcodeInvalidCall,
+			"a message handler can only be installed while the problem is not transformed")
+	}
+	if fn == nil {
+		m.scip.logSink = nil
+		return m.call(op, C.scipgo_setDefaultMessagehdlr(m.scip.raw))
+	}
+	sink := &logSink{fn: fn}
+	id := putLogSink(sink)
+	if err := m.call(op, C.scipgo_setMessagehdlr(m.scip.raw, C.uintptr_t(id))); err != nil {
+		delLogSink(id) // the handler was not installed; drop the sink
+		return err
+	}
+	// The owning instance keeps the sink alive; the registry holds it only
+	// weakly, so a callback capturing its Model cannot root the model and
+	// block its finalizer.
+	if r := m.scip.root(); r != nil {
+		r.logSink = sink
+	}
+	m.scip.logSink = sink
+	return nil
 }
 
 // TrySetLogFunc routes SCIP's output to fn, one call per complete line
@@ -165,23 +202,7 @@ func GoMessageHdlrFree(id C.uintptr_t) (ret C.SCIP_RETCODE) {
 // default stdout handler mixes them the same way. Passing nil restores
 // SCIP's default stdout handler.
 func (m Model) TrySetLogFunc(fn func(level LogLevel, line string)) error {
-	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	if err := m.guard("SetLogFunc"); err != nil {
-		return err
-	}
-	if !stages(StageInit, StageProblem).has(m.scip.stage()) {
-		return m.invalid("SetLogFunc", RetcodeInvalidCall,
-			"a message handler can only be installed while the problem is not transformed")
-	}
-	if fn == nil {
-		return m.call("SetLogFunc", C.scipgo_setDefaultMessagehdlr(m.scip.raw))
-	}
-	id := putLogSink(&logSink{fn: fn})
-	if err := m.call("SetLogFunc", C.scipgo_setMessagehdlr(m.scip.raw, C.uintptr_t(id))); err != nil {
-		delLogSink(id) // the handler was not installed; drop the sink
-		return err
-	}
-	return nil
+	return m.trySetLog("SetLogFunc", fn)
 }
 
 // SetLogFunc routes SCIP's output to fn; see TrySetLogFunc. It panics on
@@ -195,10 +216,10 @@ func (m Model) SetLogFunc(fn func(level LogLevel, line string)) Model {
 // TrySetLogFunc for the staging and threading rules. It returns an error
 // rather than panicking when the sink cannot be installed.
 func (m Model) TrySetLogWriter(w io.Writer) error {
-	if w == nil {
+	if isNilInterface(w) {
 		return m.invalid("SetLogWriter", RetcodeInvalidData, "nil io.Writer")
 	}
-	return m.TrySetLogFunc(func(_ LogLevel, line string) {
+	return m.trySetLog("SetLogWriter", func(_ LogLevel, line string) {
 		fmt.Fprintln(w, line)
 	})
 }
@@ -218,7 +239,7 @@ func (m Model) TrySetLogger(logger *slog.Logger) error {
 	if logger == nil {
 		return m.invalid("SetLogger", RetcodeInvalidData, "nil *slog.Logger")
 	}
-	return m.TrySetLogFunc(func(level LogLevel, line string) {
+	return m.trySetLog("SetLogger", func(level LogLevel, line string) {
 		switch level {
 		case LogWarning:
 			logger.Warn(line)
