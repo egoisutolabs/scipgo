@@ -387,6 +387,16 @@ func TestSetLogFuncStageError(t *testing.T) {
 	if err := fresh.TrySetLogWriter(nil); err == nil {
 		t.Error("TrySetLogWriter(nil) should fail")
 	}
+	// A dead model reports InvalidCall even when the sink argument is also
+	// invalid: the liveness guard precedes argument validation.
+	dead := NewModel().IncludeDefaultPlugins()
+	dead.Free()
+	if err := dead.TrySetLogWriter(nil); !errors.Is(err, RetcodeInvalidCall) {
+		t.Errorf("TrySetLogWriter(nil) on freed model = %v, want RetcodeInvalidCall", err)
+	}
+	if err := dead.TrySetLogger(nil); !errors.Is(err, RetcodeInvalidCall) {
+		t.Errorf("TrySetLogger(nil) on freed model = %v, want RetcodeInvalidCall", err)
+	}
 	if err := fresh.TrySetLogger(nil); err == nil {
 		t.Error("TrySetLogger(nil) should fail")
 	}

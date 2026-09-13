@@ -251,6 +251,13 @@ func (m Model) SetLogFunc(fn func(level LogLevel, line string)) Model {
 // TrySetLogFunc for the staging and threading rules. It returns an error
 // rather than panicking when the sink cannot be installed.
 func (m Model) TrySetLogWriter(w io.Writer) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	// The liveness guard runs before argument validation, so a dead model
+	// reports RetcodeInvalidCall like every other method, not the sink's
+	// RetcodeInvalidData.
+	if err := m.guard("SetLogWriter"); err != nil {
+		return err
+	}
 	if isNilInterface(w) {
 		return m.invalid("SetLogWriter", RetcodeInvalidData, "nil io.Writer")
 	}
@@ -271,6 +278,10 @@ func (m Model) SetLogWriter(w io.Writer) Model {
 // the message; see TrySetLogFunc for the staging and threading rules. It
 // returns an error rather than panicking when the sink cannot be installed.
 func (m Model) TrySetLogger(logger *slog.Logger) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.guard("SetLogger"); err != nil {
+		return err
+	}
 	if logger == nil {
 		return m.invalid("SetLogger", RetcodeInvalidData, "nil *slog.Logger")
 	}
