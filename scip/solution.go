@@ -45,11 +45,13 @@ func (s Solution) ObjVal() float64 {
 	return float64(C.SCIPgetSolOrigObj(s.scip.raw, s.raw))
 }
 
-// Heuristic returns the heuristic that created the solution, if any. Only
-// solutions created through Model.CreateSolFor and its orig/partial variants
-// carry their creator; those from Model.CreateSol and friends, and MIP-start
-// seeds added before solving, do not. This is the creator recorded on the
-// solution, which is independent of HeuristicPlugin.NSolsFound (see there).
+// Heuristic returns the heuristic that created the solution, if any.
+// Solutions produced by SCIP's own heuristics carry their creator, and the
+// For constructors (Model.CreateSolFor and its orig/partial variants) record
+// one; the plain constructors (Model.CreateSol and friends) pass no
+// heuristic, so those solutions report none, whenever they are added. This
+// is the creator recorded on the solution, which is independent of
+// HeuristicPlugin.NSolsFound (see there).
 func (s Solution) Heuristic() (HeuristicPlugin, bool) {
 	defer runtime.KeepAlive(s.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	s.live("Solution.Heuristic")
