@@ -37,8 +37,9 @@ fmt.Println(solved.Status(), sol.ObjVal(), sol.Val(x), sol.Val(y))
   pricers, constraint handlers, event handlers and node selectors are Go
   interfaces, registered with a builder. Panics in callbacks are captured
   and re-raised from `Solve` instead of crashing the process.
-- **Safe by construction.** Every method exists in a panicking and an
-  error-returning form. Every query checks the solver stage and the
+- **Safe by construction.** Methods that can fail against SCIP come in a
+  panicking and an error-returning form, so you choose per call site.
+  Every query checks the solver stage and the
   liveness of the model and handle before touching SCIP, so a call in the
   wrong stage, on a freed model, or with a handle from a freed or replaced
   problem produces a Go error instead of undefined behaviour.

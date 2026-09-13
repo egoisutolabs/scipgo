@@ -95,8 +95,10 @@ func main() { scip.NewModel().PrintVersion() }
 A minimal image for a service that uses scipgo:
 
 ```dockerfile
-FROM golang:1.25-bookworm AS build
 ARG SCIP_VERSION=10.0.2
+
+FROM golang:1.25-bookworm AS build
+ARG SCIP_VERSION
 RUN apt-get update && apt-get install -y wget && \
     wget -q https://github.com/scipopt/scip/releases/download/v${SCIP_VERSION}/scipoptsuite_${SCIP_VERSION}-1+bookworm_amd64.deb && \
     apt-get install -y ./scipoptsuite_${SCIP_VERSION}-1+bookworm_amd64.deb
@@ -105,14 +107,21 @@ COPY . .
 RUN go build -o /out/app ./cmd/app
 
 FROM debian:bookworm-slim
-COPY --from=build /usr/lib/libscip* /usr/lib/
+ARG SCIP_VERSION
+# libscip links against GMP, zlib and the other suite libraries, so install
+# the package rather than copying libscip alone; apt pulls in the closure.
+COPY --from=build /scipoptsuite_${SCIP_VERSION}-1+bookworm_amd64.deb /tmp/
+RUN apt-get update && apt-get install -y --no-install-recommends /tmp/scipoptsuite_*.deb && \
+    rm -rf /tmp/*.deb /var/lib/apt/lists/*
 COPY --from=build /out/app /app
 ENTRYPOINT ["/app"]
 ```
 
 Check the releases page for the exact package name of the Debian or Ubuntu
-version you build on. The run-time image only needs the shared library, not
-the headers.
+version you build on. Installing the package in the runtime stage, rather
+than copying `libscip` by hand, brings in the libraries it is linked
+against (GMP, zlib, the suite's own LP solver) that the dynamic loader
+needs at startup.
 
 ## Troubleshooting
 
