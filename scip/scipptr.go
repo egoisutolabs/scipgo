@@ -36,6 +36,11 @@ type Scip struct {
 	// handle, original ones included.
 	transGen uint64
 	probGen  uint64
+	// logSink is the strong reference to the currently installed log sink;
+	// the global registry holds it only weakly, so a callback capturing its
+	// Model cannot root the model through the registry and block its
+	// finalizer.
+	logSink *logSink
 	// stopFlag is the Go-side half of Interrupt: set by a caller that wants
 	// the solve stopped, relayed to concurrent workers and sub-SCIPs by the
 	// interruptForwarder event handler (below). Like SCIP's own
@@ -216,6 +221,10 @@ func (s *Scip) free() error {
 		firstErr = fmt.Errorf("panic in plugin free callback: %v", ps[0])
 	}
 	deleteDatastore(s)
+	// scipFree released the message handler, whose free callback flushed the
+	// sink; drop the strong reference so a callback that captured the Model
+	// does not keep it (and everything the callback closes over) alive.
+	s.logSink = nil
 	s.raw = nil
 	return firstErr
 }

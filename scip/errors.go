@@ -231,9 +231,10 @@ func (m Model) checkNode(op string, n *Node) error {
 	return m.checkHandle(op, "Node", n.raw != nil, n.scip, n.gen, false)
 }
 
-// isNilPlugin reports whether a plugin interface value is nil, including a
-// typed nil pointer stored in it, which == nil does not catch.
-func isNilPlugin(p any) bool {
+// isNilInterface reports whether an interface value is nil, including a
+// typed nil pointer stored in it, which == nil does not catch; used for
+// plugin implementations and sink arguments alike.
+func isNilInterface(p any) bool {
 	if p == nil {
 		return true
 	}

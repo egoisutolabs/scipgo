@@ -1,5 +1,7 @@
 #include "helpers.h"
 #include "_cgo_export.h"
+#include "scip/message_default.h"
+#include "scip/struct_message.h"
 
 uintptr_t scipgo_branchruleId(SCIP_BRANCHRULE* branchrule) { return (uintptr_t)SCIPbranchruleGetData(branchrule); }
 uintptr_t scipgo_eventhdlrId(SCIP_EVENTHDLR* eventhdlr) { return (uintptr_t)SCIPeventhdlrGetData(eventhdlr); }
@@ -273,3 +275,86 @@ SCIP_RETCODE scipgo_copyPlugins(SCIP* source, SCIP* target, SCIP_Bool* valid)
         TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE,
         TRUE, valid);
 }
+
+/* ---------------------------- message handler --------------------------- */
+
+static void scipgo_messageLog(SCIP_MESSAGEHDLR* messagehdlr, FILE* file, const char* msg,
+    void (*go)(uintptr_t, char*))
+{
+    /* SCIP normalizes a NULL file to stdout before the handler sees it, so
+       "screen" output arrives as file == NULL || file == stdout (|| stderr).
+       Any other FILE* means SCIP is writing to a specific file
+       (SCIPprintStatistics and friends): write there and keep it out of the
+       Go sink. */
+    if( file != NULL && file != stdout && file != stderr )
+    {
+        fputs(msg, file);
+        return;
+    }
+    go((uintptr_t)SCIPmessagehdlrGetData(messagehdlr), (char*)msg);
+}
+
+static SCIP_DECL_MESSAGEWARNING(scipgo_messagewarning)
+{
+    scipgo_messageLog(messagehdlr, file, msg, GoMessageWarning);
+}
+
+static SCIP_DECL_MESSAGEDIALOG(scipgo_messagedialog)
+{
+    scipgo_messageLog(messagehdlr, file, msg, GoMessageDialog);
+}
+
+static SCIP_DECL_MESSAGEINFO(scipgo_messageinfo)
+{
+    scipgo_messageLog(messagehdlr, file, msg, GoMessageInfo);
+}
+
+static SCIP_DECL_MESSAGEHDLRFREE(scipgo_messagehdlrfree)
+{
+    return GoMessageHdlrFree((uintptr_t)SCIPmessagehdlrGetData(messagehdlr));
+}
+
+SCIP_RETCODE scipgo_setMessagehdlr(SCIP* scip, uintptr_t data)
+{
+    SCIP_MESSAGEHDLR* hdlr;
+    SCIP_CALL( SCIPmessagehdlrCreate(&hdlr, FALSE, NULL, FALSE,
+        scipgo_messagewarning, scipgo_messagedialog, scipgo_messageinfo,
+        scipgo_messagehdlrfree, (SCIP_MESSAGEHDLRDATA*)data) );
+    SCIP_CALL( SCIPsetMessagehdlr(scip, hdlr) );
+    SCIP_CALL( SCIPmessagehdlrRelease(&hdlr) ); /* SCIP captured its own reference */
+    return SCIP_OKAY;
+}
+
+SCIP_RETCODE scipgo_setDefaultMessagehdlr(SCIP* scip)
+{
+    SCIP_MESSAGEHDLR* hdlr;
+    SCIP_CALL( SCIPcreateMessagehdlrDefault(&hdlr, FALSE, NULL, FALSE) );
+    SCIP_CALL( SCIPsetMessagehdlr(scip, hdlr) );
+    SCIP_CALL( SCIPmessagehdlrRelease(&hdlr) );
+    return SCIP_OKAY;
+}
+
+/* ----------------------------- error printing --------------------------- */
+
+static SCIP_DECL_ERRORPRINTING(scipgo_errorprinting)
+{
+    /* same normalization as the message handler: NULL/stdout/stderr mean
+       "screen" and are routed to Go, any other FILE* is a real target */
+    if( file != NULL && file != stdout && file != stderr )
+    {
+        fputs(msg, file);
+        return;
+    }
+    GoErrorPrinting((char*)msg);
+}
+
+void scipgo_setErrorPrinting(void)
+{
+    SCIPmessageSetErrorPrinting(scipgo_errorprinting, NULL);
+}
+
+void scipgo_setErrorPrintingDefault(void)
+{
+    SCIPmessageSetErrorPrintingDefault();
+}
+
