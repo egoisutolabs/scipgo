@@ -39,14 +39,10 @@ type logSink struct {
 
 // write adds one fragment to its channel's buffer, emitting every complete
 // line it closes. The buffer is reset before the callback runs, so a panic
-// in the user callback for one line cannot corrupt the next; the panic is
-// reported on stderr rather than allowed to unwind through C.
+// in the user callback for one line cannot corrupt the next, and the panic
+// is contained to that line: the remaining lines of a multi-line fragment
+// are still delivered.
 func (s *logSink) write(level LogLevel, msg string) {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "scip: panic in log callback: %v\n", r)
-		}
-	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	b := &s.buf[level]
@@ -67,11 +63,6 @@ func (s *logSink) write(level LogLevel, msg string) {
 // flush emits each channel's buffered partial line, so a model freed with
 // output pending loses nothing; the message handler's free callback calls it.
 func (s *logSink) flush() {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "scip: panic in log callback: %v\n", r)
-		}
-	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for level := range s.buf {
@@ -83,8 +74,17 @@ func (s *logSink) flush() {
 	}
 }
 
-// emit calls the user callback; the caller holds s.mu.
-func (s *logSink) emit(level LogLevel, line string) { s.fn(level, line) }
+// emit calls the user callback; the caller holds s.mu. A panic is reported
+// on stderr rather than allowed to unwind through C, and contained to this
+// line, so later lines are unaffected.
+func (s *logSink) emit(level LogLevel, line string) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "scip: panic in log callback: %v\n", r)
+		}
+	}()
+	s.fn(level, line)
+}
 
 // logSinks maps the registry id stored in the message handler's data slot to
 // its sink, exactly as the plugin registry works: a Go pointer cannot live in

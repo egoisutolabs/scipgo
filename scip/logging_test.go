@@ -314,9 +314,11 @@ func TestSinkPanicDoesNotCorruptNextLine(t *testing.T) {
 	}}
 	sink.write(LogInfo, "boom\n")
 	sink.write(LogInfo, "next line\n")
+	// A multi-line fragment must survive a panic on its first line.
+	sink.write(LogInfo, "boom\nsurvivor\n")
 	mu.Lock()
 	defer mu.Unlock()
-	if len(lines) != 1 || lines[0] != "next line" {
+	if len(lines) != 2 || lines[0] != "next line" || lines[1] != "survivor" {
 		t.Fatalf("lines after panic: %q", lines)
 	}
 }
