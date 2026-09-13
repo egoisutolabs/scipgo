@@ -59,8 +59,14 @@ A handle is valid until the thing it points to is released:
 | `Row`, `Col`, `Node` | `FreeTransform`; SCIP may release a row or free a node earlier, which the binding does not detect, so use them within the callback |
 | Plugin wrappers (`HeuristicPlugin` and friends) | The model is freed |
 
-Using a handle past that point produces a `*scip.Error`; see
-[Errors](errors.md#liveness). Nothing crashes.
+Using a handle after `Free`, `FreeTransform`, `CreateProb` or `ReadProb`
+produces a `*scip.Error`; see [Errors](errors.md#liveness). The binding
+does not detect the earlier releases in the table, when SCIP frees a
+processed node, a row that left the LP, or a node-local constraint; a
+handle used after one of those passes a dangling pointer into C. Keep
+those three kinds within the callback that obtained them (see
+[Plugins](plugins/README.md#inside-a-callback)). Issue #20 tracks closing
+that gap.
 
 `Inner` on any handle returns the raw C pointer for use with SCIP calls
 the binding does not wrap. It is subject to the same liveness rules and

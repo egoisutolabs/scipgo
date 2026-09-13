@@ -29,7 +29,7 @@ panicked; see [Errors](errors.md).
 | `StatusInforunbd` | Infeasible or unbounded; presolving could not tell which | None |
 | `StatusTimeLimit`, `StatusMemoryLimit`, `StatusNodeLimit`, `StatusTotalNodeLimit`, `StatusStallNodeLimit` | A limit was hit | Available if any solution was found |
 | `StatusGapLimit` | The relative gap limit was reached | Available |
-| `StatusSolutionLimit`, `StatusBestSolutionLimit` | Enough solutions or improvements were found | Available |
+| `StatusSolutionLimit`, `StatusBestSolutionLimit` | The `limits/solutions` or `limits/bestsol` count was reached | Available if any solution was found; a limit of 0 stops before the first |
 | `StatusPrimalLimit`, `StatusDualLimit` | A bound target was reached | Depends |
 | `StatusRestartLimit` | The restart limit was reached | Depends |
 | `StatusUserInterrupt` | `Interrupt` or a done context stopped it | Available if any solution was found |
