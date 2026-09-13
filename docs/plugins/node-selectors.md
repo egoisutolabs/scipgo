@@ -24,7 +24,7 @@ node under that order.
 
 ```go
 model.Add(scip.NewNodesel(dfs{}).
-	Name("dfs").
+	Name("mydfs"). // "dfs" is taken by SCIP's own selector
 	Desc("depth first").
 	StdPriority(1000000).      // default
 	MemSavePriority(1000000))  // default

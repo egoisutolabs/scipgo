@@ -16,8 +16,8 @@ model, err = model.SetRealParam("limits/gap", 0.01)
 model, err = model.SetBoolParam("lp/presolving", false)
 model, err = model.SetStrParam("visual/vbcfilename", "tree.vbc")
 
-freq := model.IntParam("display/freq")      // panics on failure
-freq, err := model.TryIntParam("display/freq")
+freq := model.IntParam("display/freq") // panics on failure
+freq, err = model.TryIntParam("display/freq")
 ```
 
 `scip.SetParam` and `scip.GetParam` dispatch on the Go type instead:

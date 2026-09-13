@@ -39,8 +39,9 @@ fmt.Println(solved.Status(), sol.ObjVal(), sol.Val(x), sol.Val(y))
   and re-raised from `Solve` instead of crashing the process.
 - **Safe by construction.** Every method exists in a panicking and an
   error-returning form. Every query checks the solver stage and the
-  liveness of the model and handle before touching SCIP, so a stale handle
-  produces a Go error, never undefined behaviour.
+  liveness of the model and handle before touching SCIP, so a call in the
+  wrong stage, on a freed model, or with a handle from a freed or replaced
+  problem produces a Go error instead of undefined behaviour.
 - **Fits a Go service.** Solves stop on a `context.Context`. SCIP's log
   routes into an `io.Writer`, a `*slog.Logger` or a callback. Memory is
   released explicitly with `Free` or by a finalizer.

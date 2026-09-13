@@ -90,7 +90,12 @@ Three constructors exist:
 | `CreatePartialSol` | Values you do not set are unknown, not zero. SCIP's `completesol` heuristic fills in the rest at the start of the solve |
 
 Partial solutions are the practical choice for MIP starts: fix the
-variables you are sure about and let the solver complete the rest.
+variables you are sure about and let the solver complete the rest. They
+depend on the `completesol` heuristic being enabled: with heuristics off,
+as `MinimalModel` and `SetHeuristics(ParamSettingOff)` leave them, the
+partial solution is queued and nothing completes it, so it contributes no
+incumbent. Check `FindHeuristic("completesol")` reports a nonnegative
+`Freq` if the model's heuristic settings have been changed.
 
 Each constructor has a `For` variant that takes a `HeuristicPlugin` and
 records it as the solution's creator; see

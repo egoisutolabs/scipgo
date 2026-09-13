@@ -204,7 +204,7 @@ func (p *Prober) SolveLp(iterationLimit int) (bool, error) {
 		return false, err
 	}
 	if lperror != 0 {
-		return false, RetcodeLpError
+		return false, (Model{scip: p.scip}).invalid("Prober.SolveLp", RetcodeLpError, "LP solver reported an error")
 	}
 	return cutoff != 0, nil
 }
@@ -234,7 +234,7 @@ func (p *Prober) SolveLpWithPricing(maxPricingRounds int) (bool, error) {
 		return false, err
 	}
 	if lperror != 0 {
-		return false, RetcodeLpError
+		return false, (Model{scip: p.scip}).invalid("Prober.SolveLpWithPricing", RetcodeLpError, "LP solver reported an error")
 	}
 	return cutoff != 0, nil
 }

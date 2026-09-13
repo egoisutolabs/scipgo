@@ -29,7 +29,7 @@ The result:
 
 ```go
 model.Add(scip.NewSeparator(&clique{}).
-	Name("clique").
+	Name("myclique"). // "clique" is taken by SCIP's own separator
 	Desc("clique cuts on the conflict graph").
 	Priority(100000).    // default
 	Freq(1).             // default: every depth; 0 root only; -1 off

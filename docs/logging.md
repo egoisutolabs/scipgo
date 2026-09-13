@@ -44,9 +44,13 @@ be swapped again. Installing one at any other time is an error.
 ### What gets routed
 
 Routing changes where lines go, not which lines SCIP produces.
-`display/verblevel` still applies and `HideOutput` silences everything
-before it reaches the sink. Output that SCIP writes to a file you named,
-such as `WriteStatsJSON`, goes to that file and not to the sink.
+`display/verblevel` still applies and `HideOutput` silences the solver
+log before it reaches the sink, with one known exception: the
+`solving problem in exact solving mode` line that an
+[exact solve](solving.md#exact-solving) announces is emitted regardless
+of the verbosity level and does reach the sink. Output that SCIP writes
+to a file you named, such as `WriteStatsJSON`, goes to that file and not
+to the sink.
 
 ### Rules for the callback
 

@@ -41,7 +41,7 @@ Only `BranchOn` needs the `Candidate` field; the others are returned as
 
 ```go
 model.Add(scip.NewBranchRule(rule).
-	Name("mostinf").
+	Name("mymostinf"). // "mostinf" is taken by SCIP's own rule
 	Desc("most infeasible branching").
 	Priority(100000).   // default
 	MaxDepth(-1).       // default: any depth
