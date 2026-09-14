@@ -454,8 +454,15 @@ func (m Model) TryAddCut(cut Row, forceCut bool) (bool, error) {
 	if err := m.checkHandle("AddCut", "Row", cut.raw != nil, cut.scip, cut.gen, false); err != nil {
 		return false, err
 	}
+	if err := cut.deadRowErr("AddCut"); err != nil {
+		return false, err
+	}
+	// The row's name is read before the add: addRow releases the binding's
+	// capture, and a filtered cut is not retained by SCIP, so the row can
+	// be freed by the time this method builds its return value.
+	name := cut.Name()
 	infeasible, err := m.scip.addRow(cut, forceCut)
-	return infeasible, m.wrap("AddCut", err, cut.Name())
+	return infeasible, m.wrap("AddCut", err, name)
 }
 
 // AddCut adds a new cut to the LP; see TryAddCut. It panics on failure.

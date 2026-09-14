@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"runtime"
 	"sync"
 )
 
@@ -95,9 +96,13 @@ func isCopyable(plugin any) bool {
 // copyEntry records a sub-SCIP copy: the Go-owned root it belongs to and an
 // incarnation number, unique per registration, so a wrapper minted in one
 // copy is not revived by a later copy that SCIP creates at the same address.
+// marker names an inert event handler installed in the native instance. It
+// is not copied, so stale Go metadata cannot make a fresh native instance
+// look like another plugin of the old one, even under the same root.
 type copyEntry struct {
-	root *C.SCIP
-	inc  uint64
+	root   *C.SCIP
+	inc    uint64
+	marker string
 }
 
 var copyParents = struct {
@@ -115,24 +120,56 @@ func rootScip(scip *C.SCIP) *C.SCIP {
 	return scip
 }
 
-func setCopyParent(target, source *C.SCIP) {
-	root := rootScip(source)
-	copyParents.Lock()
-	defer copyParents.Unlock()
-	// One sub-SCIP receives copies of many plugins, and every Go*Copy passes
-	// through here: the first plugin of a copy registers the target, and its
-	// siblings must not re-register it. A fresh incarnation would strand the
-	// wrappers already cached for this copy's earlier registry entries —
-	// their frozen incarnation would never match again, so every callback of
-	// those plugins would report a freed model. A new incarnation is due only
-	// for a target that is unknown, or known under a different root: a later
-	// copy at the same address, with the old one's Go*Free forgotten in
-	// between or not.
-	if e, ok := copyParents.m[target]; ok && e.root == root {
-		return
+func hasCopyMarker(target *C.SCIP, marker string) bool {
+	if marker == "" {
+		return false
 	}
+	name := cString(marker)
+	defer freeCString(name)
+	return C.SCIPfindEventhdlr(target, name) != nil
+}
+
+func setCopyParent(target, source *C.SCIP) error {
+	root := rootScip(source)
+	defer runtime.KeepAlive(instanceOf(root))
+	copyParents.Lock()
+	e, known := copyParents.m[target]
+	copyParents.Unlock()
+	if known && hasCopyMarker(target, e.marker) {
+		if e.root != root {
+			return RetcodeInvalidData // a live copy cannot change its owning root
+		}
+		return nil // another plugin of the same live native copy
+	}
+	// SCIPincludeEventhdlrBasic does not enforce this itself in every build;
+	// adding a plugin after initialization would break the later free path.
+	if stage := C.SCIPgetStage(target); stage != C.SCIP_STAGE_INIT && stage != C.SCIP_STAGE_PROBLEM {
+		return RetcodeInvalidCall
+	}
+
+	// Reserve a unique marker name, but do not hold the global registry lock
+	// while entering SCIP. Operations on one native instance are confined to
+	// its solver thread; independent copies may register in parallel.
+	copyParents.Lock()
 	copyParents.next++
-	copyParents.m[target] = copyEntry{root: root, inc: copyParents.next}
+	inc := copyParents.next
+	copyParents.Unlock()
+	marker := fmt.Sprintf("scipgo_copy_identity_%d", inc)
+	name := cString(marker)
+	rc := C.scipgo_includeCopyMarker(target, name)
+	freeCString(name)
+	if err := retcodeError(rc); err != nil {
+		return err
+	}
+
+	// A missing marker means this address no longer identifies the old copy.
+	// Its row pointers must not reach SCIPreleaseRow through the new instance.
+	discardRowsOfOwner(target)
+	purgeDeadRows(target)
+	copyParents.Lock()
+	copyParents.m[target] = copyEntry{root: root, inc: inc, marker: marker}
+	copyParents.Unlock()
+	return nil
 }
 
 // copyIncarnation returns the incarnation of the live sub-SCIP copy at scip,
@@ -149,11 +186,33 @@ func forgetCopy(scip *C.SCIP) {
 	delete(copyParents.m, scip)
 }
 
+// copyDies forgets a sub-SCIP that is being freed by SCIP and releases the
+// rows its callback models created, while the copy still exists. Only the
+// plugin free callbacks call it; newScip must not, because a stale address
+// from a copy that missed its callbacks carries dangling rows, which must
+// be discarded, not released through the fresh instance.
+func copyDies(scip *C.SCIP) {
+	// The copy's incarnation must be read before forgetCopy drops it: the
+	// copy's own rows carry that number, and after the drop it reads 0 and
+	// would be mistaken for the main instance's.
+	curInc := copyIncarnation(scip)
+	forgetCopy(scip)
+	// The copy is being destroyed: nothing can retry a refused release
+	// through it. Whatever the release restored for retrying would be
+	// stale data once the address is reused, so drop it outright.
+	releaseRowsOfOwnerInc(scip, curInc)
+	discardRowsOfOwner(scip)
+	purgeDeadRows(scip)
+}
+
 // pluginCopy resolves the Go plugin behind source plugin data, records target
 // as a copy of its instance, and returns the object to include in target.
 func pluginCopy[T any](target *C.SCIP, id uintptr) (T, bool) {
 	var zero T
-	setCopyParent(target, plugins.owner(id))
+	if err := setCopyParent(target, plugins.owner(id)); err != nil {
+		stashPanic(target, "", fmt.Sprintf("scip: registering plugin copy: %v", err))
+		return zero, false
+	}
 	item := plugins.get(id)
 	c, ok := item.(Copyable)
 	if !ok {
@@ -307,7 +366,7 @@ func GoBranchFree(scip *C.SCIP, branchrule *C.SCIP_BRANCHRULE) (ret C.SCIP_RETCO
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "branchrule", uintptr(C.scipgo_branchruleId(branchrule)))
 	plugins.del(uintptr(C.scipgo_branchruleId(branchrule)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -363,7 +422,7 @@ func GoEventhdlrFree(scip *C.SCIP, eventhdlr *C.SCIP_EVENTHDLR) (ret C.SCIP_RETC
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "eventhdlr", uintptr(C.scipgo_eventhdlrId(eventhdlr)))
 	plugins.del(uintptr(C.scipgo_eventhdlrId(eventhdlr)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -418,7 +477,7 @@ func GoNodeselFree(scip *C.SCIP, nodesel *C.SCIP_NODESEL) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "nodesel", uintptr(C.scipgo_nodeselId(nodesel)))
 	plugins.del(uintptr(C.scipgo_nodeselId(nodesel)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -511,7 +570,7 @@ func GoPricerFree(scip *C.SCIP, pricer *C.SCIP_PRICER) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "pricer", uintptr(C.scipgo_pricerId(pricer)))
 	plugins.del(uintptr(C.scipgo_pricerId(pricer)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -555,7 +614,7 @@ func GoHeurFree(scip *C.SCIP, heur *C.SCIP_HEUR) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "heuristic", uintptr(C.scipgo_heurId(heur)))
 	plugins.del(uintptr(C.scipgo_heurId(heur)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -611,7 +670,7 @@ func GoSepaFree(scip *C.SCIP, sepa *C.SCIP_SEPA) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "separator", uintptr(C.scipgo_sepaId(sepa)))
 	plugins.del(uintptr(C.scipgo_sepaId(sepa)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }
@@ -662,7 +721,7 @@ func GoConsFree(scip *C.SCIP, conshdlr *C.SCIP_CONSHDLR) (ret C.SCIP_RETCODE) {
 	ret = C.SCIP_ERROR
 	defer catchPanic(scip, "conshdlr", uintptr(C.scipgo_conshdlrId(conshdlr)))
 	plugins.del(uintptr(C.scipgo_conshdlrId(conshdlr)))
-	forgetCopy(scip)
+	copyDies(scip)
 	ret = C.SCIP_OKAY
 	return
 }

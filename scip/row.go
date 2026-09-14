@@ -12,6 +12,7 @@ type Row struct {
 	raw  *C.SCIP_ROW
 	scip *Scip
 	gen  uint64 // transform generation at creation; see handleErr
+	inc  uint64 // incarnation of the binding-created allocation; 0 for query handles; see deadRows
 }
 
 func (s *Scip) newRow(raw *C.SCIP_ROW) Row {
@@ -22,11 +23,24 @@ func (s *Scip) newRow(raw *C.SCIP_ROW) Row {
 	return h
 }
 
-// live panics with *Error unless the handle is usable; see handleErr.
-func (h Row) live(op string) { mustLive(op, "Row", h.raw != nil, h.scip, h.gen, false) }
+// live panics with *Error unless the handle is usable; see handleErr. A row
+// whose final capture the binding released reports InvalidCall rather than
+// dereferencing freed memory.
+func (h Row) live(op string) {
+	mustLive(op, "Row", h.raw != nil, h.scip, h.gen, false)
+	if err := h.deadRowErr(op); err != nil {
+		panic(err)
+	}
+}
 
-// Inner returns the raw pointer to the underlying SCIP_ROW.
-func (r Row) Inner() *C.SCIP_ROW { return r.raw }
+// Inner returns the raw pointer to the underlying SCIP_ROW. It panics with
+// *Error if the row was released, its transform was freed, or its instance
+// is gone.
+func (r Row) Inner() *C.SCIP_ROW {
+	defer runtime.KeepAlive(r.scip.root()) // pin the strong instance through the liveness check
+	r.live("Row.Inner")
+	return r.raw
+}
 
 // NNonZeroes returns the number of non-zero entries in the row.
 func (r Row) NNonZeroes() int {
@@ -225,6 +239,9 @@ func (r *Row) TrySetCoeff(v Variable, coeff float64) error {
 	defer runtime.KeepAlive(r.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	m := Model{scip: r.scip}
 	if err := m.checkHandle("Row.SetCoeff", "Row", r.raw != nil, r.scip, r.gen, false); err != nil {
+		return err
+	}
+	if err := r.deadRowErr("Row.SetCoeff"); err != nil {
 		return err
 	}
 	if err := m.checkVars("Row.SetCoeff", v); err != nil {

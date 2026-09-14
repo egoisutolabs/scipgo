@@ -50,6 +50,11 @@ SCIP_RETCODE scipgo_watchProblem(SCIP* scip);
 /* Copies every plugin of source into target (all SCIPcopyPlugins flags on). */
 SCIP_RETCODE scipgo_copyPlugins(SCIP* source, SCIP* target, SCIP_Bool* valid);
 
+/* Installs an inert, non-copied event handler whose unique name identifies
+   this native instance. It lives until SCIP frees the instance, even if Go's
+   plugin-free notifications are missed. */
+SCIP_RETCODE scipgo_includeCopyMarker(SCIP* scip, const char* name);
+
 /* Installs a Go-backed message handler (data is the sink's registry id) or
    SCIP's default stdout handler. SCIP only allows this in the Init and
    Problem stages. */

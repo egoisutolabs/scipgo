@@ -252,7 +252,15 @@ func (p *Prober) TryAddRow(r Row) error {
 	if err := m.checkHandle("Prober.AddRow", "Row", r.raw != nil, r.scip, r.gen, false); err != nil {
 		return err
 	}
-	return m.call("Prober.AddRow", C.SCIPaddRowProbing(p.scip.raw, r.raw))
+	if err := r.deadRowErr("Prober.AddRow"); err != nil {
+		return err
+	}
+	err := m.call("Prober.AddRow", C.SCIPaddRowProbing(p.scip.raw, r.raw))
+	if err == nil {
+		// SCIPaddRowProbing took its own capture; drop the binding's.
+		releaseOwnedRow(p.scip, r.raw)
+	}
+	return err
 }
 
 // End ends probing mode. It panics if SCIP is not probing.

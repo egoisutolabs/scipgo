@@ -100,9 +100,26 @@ infeasible := model.AddCut(row, false)
 constraint, which is what SCIP's statistics report. `SeparatorPlugin` and
 `ConshdlrPlugin` also have `CreateEmptyRow` for the same purpose. Rows
 can also be added to a probing or diving LP with `AddRow` on the session.
-Rows the binding creates are currently never released back to SCIP, so
-they are kept until the process exits; see
-[#25](https://github.com/egoisutolabs/scipgo/issues/25).
+
+Ownership: the create call hands the binding one SCIP capture per row.
+The binding releases that capture after a successful `AddCut`,
+`Prober.AddRow` or `Diver.AddRow`. If SCIP retains the row, its own capture
+keeps the row alive and inspectable; `AddCut` can also succeed after
+filtering a cut without retaining it. A row created but never
+added is released at `FreeTransform` or model free — or immediately with
+`Row.Release`/`TryRelease` if you know it will not be added. Rows reached
+through queries (`Constraint.Row`, `Col.Rows`) were never the binding's to
+release and `TryRelease` refuses them; the same holds for a row that was
+already added or released. A row whose final capture the binding dropped
+deterministically — `Row.Release`, or the teardown of a row that was never
+added — is dead: every further operation on its handle returns
+`RetcodeInvalidCall`, even after the address is reused for a fresh row
+(handles carry the incarnation of the allocation they saw). Retained rows
+are not marked dead merely because the binding released its capture: SCIP's
+capture keeps them inspectable while it uses them. Two gaps remain
+undetectable — a cut SCIP filters away at `AddCut`, and a cut it later
+removes from the LP on its own; both are the handle-liveness problem tracked in
+[#20](https://github.com/egoisutolabs/scipgo/issues/20).
 
 ## Columns
 

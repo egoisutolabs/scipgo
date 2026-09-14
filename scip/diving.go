@@ -50,6 +50,9 @@ func (d *Diver) rowOp(op string, r Row, call func() C.SCIP_RETCODE) error {
 	if err := m.checkHandle(op, "Row", r.raw != nil, r.scip, r.gen, false); err != nil {
 		return err
 	}
+	if err := r.deadRowErr(op); err != nil {
+		return err
+	}
 	return m.call(op, call())
 }
 
@@ -116,7 +119,12 @@ func (d *Diver) AddRow(r Row) { must(d.TryAddRow(r)) }
 // TryAddRow is AddRow returning an error instead of panicking.
 func (d *Diver) TryAddRow(r Row) error {
 	defer runtime.KeepAlive(d.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
-	return d.rowOp("Diver.AddRow", r, func() C.SCIP_RETCODE { return C.SCIPaddRowDive(d.scip.raw, r.raw) })
+	err := d.rowOp("Diver.AddRow", r, func() C.SCIP_RETCODE { return C.SCIPaddRowDive(d.scip.raw, r.raw) })
+	if err == nil {
+		// SCIPaddRowDive took its own capture; drop the binding's.
+		releaseOwnedRow(d.scip, r.raw)
+	}
+	return err
 }
 
 // ChgRowLhs changes a row's left-hand side in the dive. It panics on failure.

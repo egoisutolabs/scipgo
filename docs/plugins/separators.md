@@ -82,13 +82,14 @@ report `Cutoff`.
 for attribution and `AddToSolving(model)` to create it; see
 [Tree and LP](../tree-and-lp.md#rows).
 
-Known issue: the binding holds a SCIP capture on every row it creates and
-does not release it after `AddCut`, so each created row is kept for the
-life of the process rather than freed when SCIP is done with it. On a
-long branch-and-cut solve that is a leak of one row per cut. Tracked in
-[#25](https://github.com/egoisutolabs/scipgo/issues/25); until it is
-fixed, create rows only for cuts you will add, and prefer `Freq(0)` for a
-separator that produces many rows.
+Row memory: the binding owns one SCIP capture per row it creates, and
+releases it the moment the row is added — `AddCut` takes its own capture,
+so the row stays alive in the separation storage, the LP or the cut pool
+for exactly as long as SCIP uses it, and no longer. A row you create and
+do not add is released at `FreeTransform` or when the model is freed, or
+immediately with `Row.Release`. Rows reached through queries
+(`Constraint.Row`, `Col.Rows`) are not the binding's and cannot be
+released. See [Tree and LP](../tree-and-lp.md#rows) for the full rules.
 
 ## Example
 

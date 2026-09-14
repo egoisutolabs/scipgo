@@ -141,7 +141,8 @@ func newScip() (*Scip, error) {
 		return nil, err
 	}
 	s := &Scip{raw: scipPtr}
-	forgetCopy(scipPtr) // the address may have belonged to a freed sub-SCIP
+	forgetCopy(scipPtr)         // the address may have belonged to a freed sub-SCIP
+	discardRowsOfOwner(scipPtr) // its stale row entries are dangling: drop, never release
 	instances.Lock()
 	instances.m[scipPtr] = weak.Make(s)
 	instances.Unlock()
@@ -212,9 +213,19 @@ func (s *Scip) free() error {
 		}
 	}
 
+	// The binding's still-held row captures go before SCIPfree tears down
+	// the LP; a debug SCIP asserts if they outlive the instance.
+	if err := releaseRowsOfOwner(s.raw); err != nil && firstErr == nil {
+		firstErr = err
+	}
 	if err := s.scipFree(raw); err != nil && firstErr == nil {
 		firstErr = err
 	}
+	// The instance is gone: entries a refused release restored can never be
+	// retried through it, and the rows are dangling with its memory — drop
+	// them, and the tombstones, like the copy teardown does.
+	discardRowsOfOwner(raw)
+	purgeDeadRows(raw)
 	// Drop panics stashed by plugin free callbacks: the raw pointer may be
 	// reused by a later SCIPcreate, which would otherwise rethrow them.
 	if ps := takePanics(s.raw); len(ps) > 0 && firstErr == nil {
@@ -1357,14 +1368,25 @@ func (s *Scip) addRow(row Row, forceCut bool) (bool, error) {
 	if err := retcodeError(C.SCIPaddRow(s.raw, row.raw, cBool(forceCut), &infeasible)); err != nil {
 		return false, err
 	}
+	// SCIPaddRow took its own capture; drop the binding's, mirroring
+	// create/fill/add/release in SCIP's own separators.
+	releaseOwnedRow(s, row.raw)
 	return infeasible != 0, nil
 }
 
 func (s *Scip) freeTransform() error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	// Rows created and never added are the binding's to release before the
+	// transformed problem — and the LP holding its captures — goes away.
+	relErr := releaseRowsOfOwner(s.raw)
 	err := retcodeError(C.SCIPfreeTransform(s.raw))
 	if err == nil {
 		s.root().transGen++ // every transformed handle is now dead
+		// ... and stronger than any tombstone: purge them so the map does
+		// not grow one entry per released row address over the process
+		// lifetime.
+		purgeDeadRows(s.raw)
+		err = relErr // a row that could not be released is still outstanding
 	}
 	return err
 }
