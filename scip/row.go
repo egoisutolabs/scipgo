@@ -34,7 +34,12 @@ func (h Row) live(op string) {
 }
 
 // Inner returns the raw pointer to the underlying SCIP_ROW.
-func (r Row) Inner() *C.SCIP_ROW { return r.raw }
+func (r Row) Inner() *C.SCIP_ROW {
+	if err := r.deadRowErr("Row.Inner"); err != nil {
+		panic(err) // never hand out a pointer to freed memory
+	}
+	return r.raw
+}
 
 // NNonZeroes returns the number of non-zero entries in the row.
 func (r Row) NNonZeroes() int {

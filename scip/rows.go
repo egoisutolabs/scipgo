@@ -30,9 +30,17 @@ var rowOwners = struct {
 
 // rowOwner pairs the owning raw instance with the row's incarnation, a
 // number from a monotonic counter unique to every row the binding creates.
+// copyInc is the sub-SCIP incarnation the row was created in (0 for the
+// main instance), so a teardown only releases rows of the copy it is
+// actually tearing down, never stale entries from an older copy at the
+// same address. added marks a row whose add succeeded while the binding's
+// release failed: SCIP holds its own capture, so it must not be released
+// as if the binding's were the last one.
 type rowOwner struct {
-	scip *C.SCIP
-	inc  uint64
+	scip    *C.SCIP
+	inc     uint64
+	copyInc uint64
+	added   bool
 }
 
 // rowsReleasedForTest counts binding-owned captures released, so tests can
@@ -106,10 +114,11 @@ func (r Row) deadRowErr(op string) error {
 // ownRow records the binding's capture on a freshly created row and hands
 // back the row's incarnation.
 func ownRow(s *Scip, row *C.SCIP_ROW) uint64 {
+	cInc := copyIncarnation(s.raw)
 	rowOwners.Lock()
 	rowOwners.nextInc++
 	inc := rowOwners.nextInc
-	rowOwners.rows[row] = rowOwner{scip: s.raw, inc: inc}
+	rowOwners.rows[row] = rowOwner{scip: s.raw, inc: inc, copyInc: cInc}
 	rowOwners.Unlock()
 	return inc
 }
@@ -120,7 +129,7 @@ func ownRow(s *Scip, row *C.SCIP_ROW) uint64 {
 // The release happens outside the registry lock; if SCIP refuses it, the
 // ownership entry is restored so a later teardown can retry, and the error
 // is returned alongside released=false.
-func releaseOwnedRowErr(s *Scip, row *C.SCIP_ROW) (bool, error) {
+func releaseOwnedRowErr(s *Scip, row *C.SCIP_ROW, afterAdd bool) (bool, error) {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	rowOwners.Lock()
 	owner, ok := rowOwners.rows[row]
@@ -137,6 +146,7 @@ func releaseOwnedRowErr(s *Scip, row *C.SCIP_ROW) (bool, error) {
 	// capture was the last one poison the handle.
 	r := row
 	if err := retcodeError(C.SCIPreleaseRow(s.raw, &r)); err != nil {
+		owner.added = owner.added || afterAdd // SCIP holds a capture of an added row
 		rowOwners.Lock()
 		rowOwners.rows[row] = owner // still captured; let teardown retry
 		rowOwners.Unlock()
@@ -152,7 +162,7 @@ func releaseOwnedRowErr(s *Scip, row *C.SCIP_ROW) (bool, error) {
 // best-effort and must not tombstone: the add itself took a capture, so
 // the row stays alive and inspectable while SCIP uses it.
 func releaseOwnedRow(s *Scip, row *C.SCIP_ROW) bool {
-	ok, _ := releaseOwnedRowErr(s, row)
+	ok, _ := releaseOwnedRowErr(s, row, true)
 	return ok
 }
 
@@ -176,15 +186,24 @@ func discardRowsOfOwner(raw *C.SCIP) {
 // first release error, if any. Rows whose release SCIP refuses are put
 // back, so a later teardown can retry them.
 func releaseRowsOfOwner(raw *C.SCIP) error {
+	// The incarnation of the copy at this address right now, read before
+	// anything forgets it: rows of an older copy at the same address are
+	// dangling with that copy's memory and must be discarded, not released
+	// through whoever lives there now.
+	curInc := copyIncarnation(raw)
 	rowOwners.Lock()
 	var rows []*C.SCIP_ROW
 	var owners []rowOwner
 	for row, owner := range rowOwners.rows {
-		if owner.scip == raw {
-			rows = append(rows, row)
-			owners = append(owners, owner)
-			delete(rowOwners.rows, row)
+		if owner.scip != raw {
+			continue
 		}
+		if owner.copyInc != curInc {
+			continue // stale entry of an older copy: drop it below
+		}
+		rows = append(rows, row)
+		owners = append(owners, owner)
+		delete(rowOwners.rows, row)
 	}
 	rowOwners.Unlock()
 
@@ -214,10 +233,26 @@ func releaseRowsOfOwner(raw *C.SCIP) error {
 		}
 		rowOwners.Unlock()
 	}
+	// Entries of older incarnations at this address are stale data: the
+	// copies they belonged to are gone. Drop them so they can never be
+	// released through whoever lives at the address now.
+	discardStaleRows(raw, curInc)
 	rowOwners.Lock()
 	rowsReleasedForTest += len(rows) - len(failed)
 	rowOwners.Unlock()
 	return firstErr
+}
+
+// discardStaleRows drops the ownership entries of an address whose copy
+// incarnation is not the current one.
+func discardStaleRows(raw *C.SCIP, curInc uint64) {
+	rowOwners.Lock()
+	for row, owner := range rowOwners.rows {
+		if owner.scip == raw && owner.copyInc != curInc {
+			delete(rowOwners.rows, row)
+		}
+	}
+	rowOwners.Unlock()
 }
 
 // TryRelease releases the binding's capture on a row it created, freeing it
@@ -253,7 +288,11 @@ func (r Row) TryRelease() error {
 	if owner.inc != r.inc {
 		return notOurs()
 	}
-	released, err := releaseOwnedRowErr(r.scip, r.raw)
+	if owner.added {
+		return Model{scip: r.scip}.invalid("Row.Release", RetcodeInvalidData,
+			"row was added; SCIP holds its own capture while it uses it")
+	}
+	released, err := releaseOwnedRowErr(r.scip, r.raw, false)
 	if err != nil {
 		return err
 	}
