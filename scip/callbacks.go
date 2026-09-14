@@ -161,6 +161,7 @@ func copyDies(scip *C.SCIP) {
 	// be stale data once the address is reused, so drop it outright.
 	releaseRowsOfOwner(scip)
 	discardRowsOfOwner(scip)
+	purgeDeadRows(scip)
 }
 
 // pluginCopy resolves the Go plugin behind source plugin data, records target

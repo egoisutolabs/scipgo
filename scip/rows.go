@@ -53,14 +53,36 @@ var rowsReleasedForTest int
 // handle-liveness problem of #20.
 var deadRows = struct {
 	sync.Mutex
-	m map[*C.SCIP_ROW]uint64
-}{m: make(map[*C.SCIP_ROW]uint64)}
+	m map[*C.SCIP_ROW]deadTomb
+}{m: make(map[*C.SCIP_ROW]deadTomb)}
+
+// deadTomb is a tombstone: the dead row's incarnation and the instance it
+// belonged to, so teardown can purge the entries once the generation or
+// the instance has already killed every handle they could affect.
+type deadTomb struct {
+	inc   uint64
+	owner *C.SCIP
+}
 
 // poisonRow marks a row as gone: the binding dropped its final capture.
-func poisonRow(row *C.SCIP_ROW, inc uint64) {
+func poisonRow(row *C.SCIP_ROW, owner *C.SCIP, inc uint64) {
 	deadRows.Lock()
-	if deadRows.m[row] < inc {
-		deadRows.m[row] = inc
+	if t := deadRows.m[row]; t.inc < inc {
+		deadRows.m[row] = deadTomb{inc: inc, owner: owner}
+	}
+	deadRows.Unlock()
+}
+
+// purgeDeadRows drops the tombstones of one instance, once its handles are
+// dead by a stronger rule: after a successful FreeTransform (the transform
+// generation moved on) or when the instance itself is gone. Without this,
+// long-lived processes would grow one map entry per released row address.
+func purgeDeadRows(owner *C.SCIP) {
+	deadRows.Lock()
+	for row, t := range deadRows.m {
+		if t.owner == owner {
+			delete(deadRows.m, row)
+		}
 	}
 	deadRows.Unlock()
 }
@@ -75,8 +97,8 @@ func (r Row) deadRowErr(op string) error {
 	deadRows.Lock()
 	tomb := deadRows.m[r.raw]
 	deadRows.Unlock()
-	if tomb >= r.inc {
-		return (&Error{Op: op, Retcode: RetcodeInvalidCall, Detail: "row was released"})
+	if tomb.inc >= r.inc {
+		return Model{scip: r.scip}.invalid(op, RetcodeInvalidCall, "row was released")
 	}
 	return nil
 }
@@ -181,7 +203,7 @@ func releaseRowsOfOwner(raw *C.SCIP) error {
 			// These were never added: the binding's capture was the last
 			// one, so the row is gone and its handle must die — even if
 			// SCIPfreeTransform is about to fail.
-			poisonRow(row, owners[i].inc)
+			poisonRow(row, raw, owners[i].inc)
 		}
 	}
 	if len(failed) > 0 {
@@ -218,30 +240,30 @@ func (r Row) TryRelease() error {
 	rowOwners.Lock()
 	owner, ok := rowOwners.rows[r.raw]
 	rowOwners.Unlock()
+	notOurs := func() error {
+		return Model{scip: r.scip}.invalid("Row.Release", RetcodeInvalidData,
+			"row was not created by the binding, or is already released")
+	}
 	if !ok {
-		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
-			Detail: "row was not created by the binding, or is already released"})
+		return notOurs()
 	}
 	if owner.scip != r.scip.raw {
-		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
-			Detail: "row belongs to another model"})
+		return Model{scip: r.scip}.invalid("Row.Release", RetcodeInvalidData, "row belongs to another model")
 	}
 	if owner.inc != r.inc {
-		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
-			Detail: "row was not created by the binding, or is already released"})
+		return notOurs()
 	}
 	released, err := releaseOwnedRowErr(r.scip, r.raw)
 	if err != nil {
 		return err
 	}
 	if !released {
-		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
-			Detail: "row was not created by the binding, or is already released"})
+		return notOurs()
 	}
 	// The binding's capture was the last one (an added row is no longer
 	// owned): the row is freed and every handle to it must die, including
 	// across a later reuse of the address.
-	poisonRow(r.raw, r.inc)
+	poisonRow(r.raw, r.scip.raw, r.inc)
 	return nil
 }
 

@@ -221,6 +221,11 @@ func (s *Scip) free() error {
 	if err := s.scipFree(raw); err != nil && firstErr == nil {
 		firstErr = err
 	}
+	// The instance is gone: entries a refused release restored can never be
+	// retried through it, and the rows are dangling with its memory — drop
+	// them, and the tombstones, like the copy teardown does.
+	discardRowsOfOwner(raw)
+	purgeDeadRows(raw)
 	// Drop panics stashed by plugin free callbacks: the raw pointer may be
 	// reused by a later SCIPcreate, which would otherwise rethrow them.
 	if ps := takePanics(s.raw); len(ps) > 0 && firstErr == nil {
@@ -1377,7 +1382,11 @@ func (s *Scip) freeTransform() error {
 	err := retcodeError(C.SCIPfreeTransform(s.raw))
 	if err == nil {
 		s.root().transGen++ // every transformed handle is now dead
-		err = relErr        // a row that could not be released is still outstanding
+		// ... and stronger than any tombstone: purge them so the map does
+		// not grow one entry per released row address over the process
+		// lifetime.
+		purgeDeadRows(s.raw)
+		err = relErr // a row that could not be released is still outstanding
 	}
 	return err
 }
