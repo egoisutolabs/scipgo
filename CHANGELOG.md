@@ -4,6 +4,23 @@ All notable changes to scipgo are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `Row.Release` and `TryRelease` for promptly releasing a binding-created
+  row that will not be added.
+
+### Fixed
+
+- Release binding-owned row captures after adds and during teardown,
+  including rows created by sub-SCIP callbacks. Retained rows remain
+  inspectable through SCIP's own capture.
+- Verify copied instances with non-copied native identity markers so
+  same-root address reuse cannot release a previous copy's stale rows.
+- Apply full row liveness checks in `Row.Inner`, including after
+  `FreeTransform` or copy destruction purges release records.
+
 ## [0.3.0] - 2026-09-13
 
 ### Added

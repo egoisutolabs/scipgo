@@ -21,7 +21,9 @@ import (
 //
 // Sub-SCIP copies: rows created through a copy's callback model belong to
 // the copy's raw pointer, and the copy's plugin free callbacks call
-// forgetCopy, which releases them there.
+// copyDies, which saves the incarnation before dropping its metadata and
+// releases only that incarnation's rows. A native marker distinguishes address
+// reuse from sibling plugins registering in the same live copy.
 var rowOwners = struct {
 	sync.Mutex
 	nextInc uint64
@@ -54,7 +56,8 @@ var rowsReleasedForTest int
 // dead row's incarnation. A handle dies when a tombstone at its address is
 // at least as new as the handle's incarnation, so a released row stays
 // dead even after the address is reused for a fresh one (which simply gets
-// a higher incarnation), and tombstones never need clearing. Rows the
+// a higher incarnation). Tombstones are purged only after transform or
+// instance invalidation provides the stronger lifetime check. Rows the
 // binding adds are never tombstoned: SCIP holds its own capture while it
 // uses them, and they stay inspectable. Rows SCIP releases on its own (a
 // cut removed from the LP) remain undetectable here; that is the open
@@ -268,9 +271,9 @@ func discardStaleRows(raw *C.SCIP, curInc uint64) {
 // row and then decided not to add it. Rows added through Model.AddCut,
 // Prober.AddRow or Diver.AddRow are released by those methods; rows the
 // binding did not create (results of Constraint.Row, Col.Rows) are not the
-// binding's to release, and neither is a row that was already released, so
-// both fail with RetcodeInvalidData. After a successful release the Row
-// value is no longer usable.
+// binding's to release. Query-derived and already-added rows fail with
+// RetcodeInvalidData; an already-released binding-created handle fails with
+// RetcodeInvalidCall. After a successful release the Row is no longer usable.
 func (r Row) TryRelease() error {
 	defer runtime.KeepAlive(r.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	m := Model{scip: r.scip}

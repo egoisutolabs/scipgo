@@ -102,9 +102,10 @@ constraint, which is what SCIP's statistics report. `SeparatorPlugin` and
 can also be added to a probing or diving LP with `AddRow` on the session.
 
 Ownership: the create call hands the binding one SCIP capture per row.
-Every add — `AddCut`, `Prober.AddRow`, `Diver.AddRow` — takes a capture of
-its own, and the binding releases its capture on success, so a row lives
-exactly as long as SCIP uses it and no longer. A row created but never
+The binding releases that capture after a successful `AddCut`,
+`Prober.AddRow` or `Diver.AddRow`. If SCIP retains the row, its own capture
+keeps the row alive and inspectable; `AddCut` can also succeed after
+filtering a cut without retaining it. A row created but never
 added is released at `FreeTransform` or model free — or immediately with
 `Row.Release`/`TryRelease` if you know it will not be added. Rows reached
 through queries (`Constraint.Row`, `Col.Rows`) were never the binding's to
@@ -113,11 +114,11 @@ already added or released. A row whose final capture the binding dropped
 deterministically — `Row.Release`, or the teardown of a row that was never
 added — is dead: every further operation on its handle returns
 `RetcodeInvalidCall`, even after the address is reused for a fresh row
-(handles carry the incarnation of the allocation they saw). Added rows are
-never marked dead by the binding: SCIP holds its own capture while it uses
-them and the handle stays inspectable. Two gaps remain undetectable — a cut
-SCIP filters away at `AddCut`, and a cut it later removes from the LP on
-its own; both are the handle-liveness problem tracked in
+(handles carry the incarnation of the allocation they saw). Retained rows
+are not marked dead merely because the binding released its capture: SCIP's
+capture keeps them inspectable while it uses them. Two gaps remain
+undetectable — a cut SCIP filters away at `AddCut`, and a cut it later
+removes from the LP on its own; both are the handle-liveness problem tracked in
 [#20](https://github.com/egoisutolabs/scipgo/issues/20).
 
 ## Columns

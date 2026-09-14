@@ -56,9 +56,17 @@ A handle is valid until the thing it points to is released:
 | Original `Variable`, `Constraint`, `Solution` | The problem is replaced (`CreateProb`, `ReadProb`) or the model is freed |
 | Transformed `Variable`, global transformed `Constraint` | `FreeTransform` |
 | `Constraint` from `AddConsLocal` or `AddConsNode` | Its node's subtree is deleted, which the binding does not detect; use it within the callback |
-| `Row`, `Col`, `Node` | `FreeTransform`; SCIP may release a row or free a node earlier, which the binding does not detect, so use them within the callback. The binding releases its own capture on a row when it is added, at `FreeTransform`, at model free, or on `Row.Release` — after that the handle is dead and further use fails
-with `RetcodeInvalidCall` |
+| Binding-created `Row` | `Row.Release` if never added; otherwise while SCIP retains it, up to `FreeTransform` or instance destruction. Releasing the binding's capture after an add does not invalidate a row SCIP retained |
+| Query-derived `Row`, `Col`, `Node` | `FreeTransform` or instance destruction; SCIP may release a row or free a node earlier, which the binding does not detect, so keep handles within their valid callback/LP scope |
 | Plugin wrappers (`HeuristicPlugin` and friends) | The model is freed |
+
+`AddCut`, `Prober.AddRow` and `Diver.AddRow` release the binding's capture
+after a successful add. If SCIP retains the row in separation storage, the
+LP or a cut pool, its capture keeps the row alive and inspectable. This is
+different from dropping the final capture with `Row.Release`: that makes
+the binding-created handle invalid immediately. A filtered cut may not be
+retained at all, so a successful `AddCut` alone does not guarantee that its
+row remains usable. See [row ownership](tree-and-lp.md#rows).
 
 Using a handle after `Free`, `FreeTransform`, `CreateProb` or `ReadProb`
 produces a `*scip.Error`; see [Errors](errors.md#liveness). The binding
@@ -71,7 +79,9 @@ that gap.
 
 `Inner` on any handle returns the raw C pointer for use with SCIP calls
 the binding does not wrap. It is subject to the same liveness rules and
-the pointer must not outlive the handle.
+the pointer must not outlive the handle. `Row.Inner` checks both explicit
+row release and the owning instance/transform lifetime before returning a
+pointer, including after teardown has purged the row's release record.
 
 ## Releasing memory
 
@@ -123,3 +133,10 @@ locking that sharing requires under `SolveConcurrent`) but are otherwise
 distinct instances. A handle from the parent must not be passed to a
 sub-SCIP's model and vice versa; both directions are rejected with
 `RetcodeInvalidData`.
+
+The binding identifies each copied native instance with an internal,
+non-copied event-handler marker (`scipgo_copy_identity_` is a reserved name
+prefix). All sibling plugins in that instance share its incarnation. If
+SCIP reuses an address while stale Go metadata remains, the missing native
+marker forces a new incarnation and stale row records are discarded without
+being released through the new instance, even when both copies share a root.

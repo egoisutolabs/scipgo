@@ -135,6 +135,44 @@ func TestRetainedRowUsableAfterAdd(t *testing.T) {
 		t.Fatalf("TrySetCoeff after a retained add: %v", err)
 	}
 	_ = row.Age() // reads still work
+	if row.Inner() != row.raw {
+		t.Fatal("retained row must expose its live native pointer")
+	}
+}
+
+func TestRowInnerChecksLifetimeAfterTombstonePurge(t *testing.T) {
+	var zero Row
+	expectErrorPanic(t, "zero row", RetcodeInvalidData, func() { zero.Inner() })
+
+	model := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.mps")).Solve()
+	defer model.Free()
+	released := NewRow().Name("released_before_transform").AddTo(model)
+	if released.Inner() != released.raw {
+		t.Fatal("live row returned the wrong pointer")
+	}
+	released.Release()
+	expectErrorPanic(t, "released row", RetcodeInvalidCall, func() { released.Inner() })
+
+	unadded := NewRow().Name("swept_at_transform").AddTo(model)
+	// Query wrappers carry no allocation incarnation, so only the full
+	// generation/instance check can protect their Inner calls after teardown.
+	query := model.scip.newRow(unadded.raw)
+	model.FreeTransform()
+	for name, row := range map[string]Row{"released": released, "unadded": unadded, "query": query} {
+		if err := row.deadRowErr("test"); err != nil {
+			t.Fatalf("%s: tombstone was not purged: %v", name, err)
+		}
+		expectErrorPanic(t, name+" after FreeTransform", RetcodeInvalidCall, func() { row.Inner() })
+	}
+	model.Solve()
+	expectErrorPanic(t, "released row after re-solve", RetcodeInvalidCall, func() { released.Inner() })
+
+	freed := NewRow().Name("swept_at_free").AddTo(model)
+	model.Free()
+	if err := freed.deadRowErr("test"); err != nil {
+		t.Fatal("instance free should purge the row tombstone")
+	}
+	expectErrorPanic(t, "row after Free", RetcodeInvalidCall, func() { freed.Inner() })
 }
 
 // TestReleasedRowStaysDeadAcrossReuse checks the incarnation rule: after a

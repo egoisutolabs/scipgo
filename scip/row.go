@@ -23,9 +23,9 @@ func (s *Scip) newRow(raw *C.SCIP_ROW) Row {
 	return h
 }
 
-// live panics with *Error unless the handle is usable; see handleErr. A
-// row the binding released reports InvalidCall rather than dereferencing
-// freed memory.
+// live panics with *Error unless the handle is usable; see handleErr. A row
+// whose final capture the binding released reports InvalidCall rather than
+// dereferencing freed memory.
 func (h Row) live(op string) {
 	mustLive(op, "Row", h.raw != nil, h.scip, h.gen, false)
 	if err := h.deadRowErr(op); err != nil {
@@ -33,11 +33,12 @@ func (h Row) live(op string) {
 	}
 }
 
-// Inner returns the raw pointer to the underlying SCIP_ROW.
+// Inner returns the raw pointer to the underlying SCIP_ROW. It panics with
+// *Error if the row was released, its transform was freed, or its instance
+// is gone.
 func (r Row) Inner() *C.SCIP_ROW {
-	if err := r.deadRowErr("Row.Inner"); err != nil {
-		panic(err) // never hand out a pointer to freed memory
-	}
+	defer runtime.KeepAlive(r.scip.root()) // pin the strong instance through the liveness check
+	r.live("Row.Inner")
 	return r.raw
 }
 

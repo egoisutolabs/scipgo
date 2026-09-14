@@ -346,7 +346,9 @@ func TestSubSCIPHandlesRejectedByParent(t *testing.T) {
 	defer parent.Free()
 	other := createTestModel(t) // stands in for a sub-SCIP copy of parent
 	defer other.Free()
-	setCopyParent(other.scip.raw, parent.scip.raw)
+	if err := setCopyParent(other.scip.raw, parent.scip.raw); err != nil {
+		t.Fatal(err)
+	}
 	defer forgetCopy(other.scip.raw)
 	worker := weakScip(other.scip.raw) // what a Copyable plugin's callback sees
 	if worker.owner.Value() != parent.scip {
@@ -361,7 +363,9 @@ func TestSubSCIPHandlesRejectedByParent(t *testing.T) {
 	}
 	forgetCopy(other.scip.raw) // SCIP freed the copy
 	expectErrorPanic(t, "handle after the copy is freed", RetcodeInvalidCall, func() { v.Name() })
-	setCopyParent(other.scip.raw, parent.scip.raw) // a later copy reuses the address
+	if err := setCopyParent(other.scip.raw, parent.scip.raw); err != nil { // a later copy reuses the address
+		t.Fatal(err)
+	}
 	expectErrorPanic(t, "handle after the address is reused", RetcodeInvalidCall, func() { v.Name() })
 	if fresh := weakScip(other.scip.raw).newVar(other.Vars()[0].raw); fresh.Name() == "" {
 		t.Fatal("a wrapper minted in the new incarnation is alive")

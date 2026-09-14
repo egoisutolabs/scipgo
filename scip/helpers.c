@@ -270,6 +270,27 @@ SCIP_RETCODE scipgo_watchProblem(SCIP* scip)
 
 /* -------------------------------- copying ------------------------------- */
 
+static SCIP_DECL_EVENTEXEC(scipgo_copyMarkerExec)
+{
+    (void)scip;
+    (void)eventhdlr;
+    (void)event;
+    (void)eventdata;
+    return SCIP_OKAY;
+}
+
+SCIP_RETCODE scipgo_includeCopyMarker(SCIP* scip, const char* name)
+{
+    if( SCIPfindEventhdlr(scip, name) != NULL )
+        return SCIP_INVALIDDATA;
+
+    /* No copy callback and no caught events: the marker belongs only to
+       this instance and cannot be inherited by another SCIPcopy. It has no
+       Go registry entry or data allocation requiring a free callback. */
+    return SCIPincludeEventhdlrBasic(scip, NULL, name,
+        "scipgo native copy identity", scipgo_copyMarkerExec, NULL);
+}
+
 SCIP_RETCODE scipgo_copyPlugins(SCIP* source, SCIP* target, SCIP_Bool* valid)
 {
     return SCIPcopyPlugins(source, target,
