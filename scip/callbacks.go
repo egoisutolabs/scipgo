@@ -155,11 +155,15 @@ func forgetCopy(scip *C.SCIP) {
 // from a copy that missed its callbacks carries dangling rows, which must
 // be discarded, not released through the fresh instance.
 func copyDies(scip *C.SCIP) {
+	// The copy's incarnation must be read before forgetCopy drops it: the
+	// copy's own rows carry that number, and after the drop it reads 0 and
+	// would be mistaken for the main instance's.
+	curInc := copyIncarnation(scip)
 	forgetCopy(scip)
 	// The copy is being destroyed: nothing can retry a refused release
-	// through it. Whatever releaseRowsOfOwner restored for retrying would
-	// be stale data once the address is reused, so drop it outright.
-	releaseRowsOfOwner(scip)
+	// through it. Whatever the release restored for retrying would be
+	// stale data once the address is reused, so drop it outright.
+	releaseRowsOfOwnerInc(scip, curInc)
 	discardRowsOfOwner(scip)
 	purgeDeadRows(scip)
 }

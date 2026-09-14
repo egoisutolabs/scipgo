@@ -61,22 +61,22 @@ var rowsReleasedForTest int
 // handle-liveness problem of #20.
 var deadRows = struct {
 	sync.Mutex
-	m map[*C.SCIP_ROW]deadTomb
-}{m: make(map[*C.SCIP_ROW]deadTomb)}
+	m map[*C.SCIP_ROW]map[*C.SCIP]uint64
+}{m: make(map[*C.SCIP_ROW]map[*C.SCIP]uint64)}
 
-// deadTomb is a tombstone: the dead row's incarnation and the instance it
-// belonged to, so teardown can purge the entries once the generation or
-// the instance has already killed every handle they could affect.
-type deadTomb struct {
-	inc   uint64
-	owner *C.SCIP
-}
-
-// poisonRow marks a row as gone: the binding dropped its final capture.
+// poisonRow marks a row as gone for its owning instance: the binding
+// dropped the final capture of that instance's allocation. Tombstones are
+// per owner, because two live models can release rows at the same recycled
+// address — one model's purge must not unprotect the other's handles.
 func poisonRow(row *C.SCIP_ROW, owner *C.SCIP, inc uint64) {
 	deadRows.Lock()
-	if t := deadRows.m[row]; t.inc < inc {
-		deadRows.m[row] = deadTomb{inc: inc, owner: owner}
+	owners := deadRows.m[row]
+	if owners == nil {
+		owners = make(map[*C.SCIP]uint64)
+		deadRows.m[row] = owners
+	}
+	if owners[owner] < inc {
+		owners[owner] = inc
 	}
 	deadRows.Unlock()
 }
@@ -87,8 +87,9 @@ func poisonRow(row *C.SCIP_ROW, owner *C.SCIP, inc uint64) {
 // long-lived processes would grow one map entry per released row address.
 func purgeDeadRows(owner *C.SCIP) {
 	deadRows.Lock()
-	for row, t := range deadRows.m {
-		if t.owner == owner {
+	for row, owners := range deadRows.m {
+		delete(owners, owner)
+		if len(owners) == 0 {
 			delete(deadRows.m, row)
 		}
 	}
@@ -103,9 +104,13 @@ func (r Row) deadRowErr(op string) error {
 		return nil
 	}
 	deadRows.Lock()
-	tomb := deadRows.m[r.raw]
+	owners := deadRows.m[r.raw]
+	tomb := uint64(0)
+	if owners != nil {
+		tomb = owners[r.scip.raw]
+	}
 	deadRows.Unlock()
-	if tomb.inc >= r.inc {
+	if tomb >= r.inc {
 		return Model{scip: r.scip}.invalid(op, RetcodeInvalidCall, "row was released")
 	}
 	return nil
@@ -186,11 +191,13 @@ func discardRowsOfOwner(raw *C.SCIP) {
 // first release error, if any. Rows whose release SCIP refuses are put
 // back, so a later teardown can retry them.
 func releaseRowsOfOwner(raw *C.SCIP) error {
-	// The incarnation of the copy at this address right now, read before
-	// anything forgets it: rows of an older copy at the same address are
-	// dangling with that copy's memory and must be discarded, not released
-	// through whoever lives there now.
-	curInc := copyIncarnation(raw)
+	return releaseRowsOfOwnerInc(raw, copyIncarnation(raw))
+}
+
+// releaseRowsOfOwnerInc is releaseRowsOfOwner with the incarnation the
+// caller knows is current — copyDies must pass the one it read before
+// forgetting the copy, since afterwards copyIncarnation reports 0.
+func releaseRowsOfOwnerInc(raw *C.SCIP, curInc uint64) error {
 	rowOwners.Lock()
 	var rows []*C.SCIP_ROW
 	var owners []rowOwner
@@ -218,10 +225,11 @@ func releaseRowsOfOwner(raw *C.SCIP) error {
 			}
 			failed = append(failed, row)
 			failedOwners = append(failedOwners, owners[i])
-		} else {
-			// These were never added: the binding's capture was the last
-			// one, so the row is gone and its handle must die — even if
-			// SCIPfreeTransform is about to fail.
+		} else if !owners[i].added {
+			// Never added: the binding's capture was the last one, so the
+			// row is gone and its handle must die — even if
+			// SCIPfreeTransform is about to fail. An added row SCIP still
+			// holds stays inspectable; only the binding's capture went.
 			poisonRow(row, raw, owners[i].inc)
 		}
 	}
@@ -294,7 +302,7 @@ func (r Row) TryRelease() error {
 	}
 	released, err := releaseOwnedRowErr(r.scip, r.raw, false)
 	if err != nil {
-		return err
+		return Model{scip: r.scip}.wrap("Row.Release", err, "")
 	}
 	if !released {
 		return notOurs()
