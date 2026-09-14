@@ -448,7 +448,9 @@ func (b RowBuilder) TryAddTo(m Model) (Row, error) {
 	if err != nil {
 		return Row{}, m.wrap("AddRow", err, strOrEmpty(b.name))
 	}
-	return m.scip.newRow(rowPtr), nil
+	h := m.scip.newRow(rowPtr)
+	h.inc = ownRow(m.scip, rowPtr)
+	return h, nil
 }
 
 // AddToSolving adds the row to a model in the Solving stage.

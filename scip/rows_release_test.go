@@ -117,16 +117,44 @@ func TestRowRelease(t *testing.T) {
 	}
 }
 
-// TestFilteredCutHandleDead checks the same for a cut SCIP did not retain:
-// the add frees the row, and the handle reports InvalidCall afterwards.
-func TestFilteredCutHandleDead(t *testing.T) {
+// TestRetainedRowUsableAfterAdd pins the counterpart of the release rules:
+// a row the binding added is never tombstoned — SCIP holds its own capture
+// while it uses the row, and the handle stays inspectable, exactly as the
+// docs promise. (A cut SCIP filters away is freed by the add and its handle
+// is undetectably dead — the #20 handle-liveness gap, documented.)
+func TestRetainedRowUsableAfterAdd(t *testing.T) {
 	model := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("p0201.mps"))
 	defer model.Free()
 	model.Solve()
-	row := NewRow().Name("filtered_dead").Local(true).AddTo(model)
-	model.AddCut(row, false)
-	if err := row.TrySetCoeff(model.Vars()[0], 1); err == nil || !errors.Is(err, RetcodeInvalidCall) {
-		t.Fatalf("TrySetCoeff on filtered cut = %v, want RetcodeInvalidCall", err)
+	row := NewRow().Name("retained_after_add").Local(true).AddTo(model)
+	for _, v := range model.Vars() {
+		row.SetCoeff(v, 1)
+	}
+	model.AddCut(row, true) // forceCut: SCIP retains it
+	if err := row.TrySetCoeff(model.Vars()[0], 2); err != nil {
+		t.Fatalf("TrySetCoeff after a retained add: %v", err)
+	}
+	_ = row.Age() // reads still work
+}
+
+// TestReleasedRowStaysDeadAcrossReuse checks the incarnation rule: after a
+// release, a fresh row — possibly allocated at the recycled address — is
+// usable, while the released handle keeps reporting InvalidCall.
+func TestReleasedRowStaysDeadAcrossReuse(t *testing.T) {
+	model := mustRead(t, NewModel().HideOutput().IncludeDefaultPlugins(), testFile("simple.mps"))
+	defer model.Free()
+	model.Solve()
+	a := NewRow().Name("released_a").AddTo(model)
+	a.Release()
+	if err := a.TrySetCoeff(model.Vars()[0], 1); err == nil || !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("released handle = %v, want RetcodeInvalidCall", err)
+	}
+	b := NewRow().Name("fresh_b").AddTo(model) // may reuse a's address
+	if err := b.TrySetCoeff(model.Vars()[0], 1); err != nil {
+		t.Fatalf("fresh row at a recycled address: %v", err)
+	}
+	if err := a.TrySetCoeff(model.Vars()[0], 1); err == nil || !errors.Is(err, RetcodeInvalidCall) {
+		t.Fatalf("released handle after reuse = %v, want RetcodeInvalidCall", err)
 	}
 }
 

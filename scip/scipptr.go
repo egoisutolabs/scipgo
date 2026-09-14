@@ -1354,7 +1354,6 @@ func (s *Scip) createEmptyRow(rb *RowBuilder) (*C.SCIP_ROW, error) {
 	if err := retcodeError(rc); err != nil {
 		return nil, err
 	}
-	ownRow(s, rowPtr) // the binding holds the create capture until the row is added or the instance winds down
 	return rowPtr, nil
 }
 

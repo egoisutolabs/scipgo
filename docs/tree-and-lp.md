@@ -109,12 +109,16 @@ added is released at `FreeTransform` or model free — or immediately with
 `Row.Release`/`TryRelease` if you know it will not be added. Rows reached
 through queries (`Constraint.Row`, `Col.Rows`) were never the binding's to
 release and `TryRelease` refuses them; the same holds for a row that was
-already added or released. A row whose final capture the binding dropped —
-via `Row.Release`, or an add SCIP did not retain — is dead: every further
-operation on the handle returns `RetcodeInvalidCall` instead of touching
-freed memory. (A cut SCIP later removes from the LP on its own is still
-undetectable; that is the handle-liveness problem tracked in
-[#20](https://github.com/egoisutolabs/scipgo/issues/20).)
+already added or released. A row whose final capture the binding dropped
+deterministically — `Row.Release`, or the teardown of a row that was never
+added — is dead: every further operation on its handle returns
+`RetcodeInvalidCall`, even after the address is reused for a fresh row
+(handles carry the incarnation of the allocation they saw). Added rows are
+never marked dead by the binding: SCIP holds its own capture while it uses
+them and the handle stays inspectable. Two gaps remain undetectable — a cut
+SCIP filters away at `AddCut`, and a cut it later removes from the LP on
+its own; both are the handle-liveness problem tracked in
+[#20](https://github.com/egoisutolabs/scipgo/issues/20).
 
 ## Columns
 

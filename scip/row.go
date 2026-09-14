@@ -12,6 +12,7 @@ type Row struct {
 	raw  *C.SCIP_ROW
 	scip *Scip
 	gen  uint64 // transform generation at creation; see handleErr
+	inc  uint64 // incarnation of the binding-created allocation; 0 for query handles; see deadRows
 }
 
 func (s *Scip) newRow(raw *C.SCIP_ROW) Row {

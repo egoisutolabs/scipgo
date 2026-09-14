@@ -24,57 +24,72 @@ import (
 // forgetCopy, which releases them there.
 var rowOwners = struct {
 	sync.Mutex
-	rows map[*C.SCIP_ROW]*C.SCIP
-}{rows: make(map[*C.SCIP_ROW]*C.SCIP)}
+	nextInc uint64
+	rows    map[*C.SCIP_ROW]rowOwner
+}{rows: make(map[*C.SCIP_ROW]rowOwner)}
+
+// rowOwner pairs the owning raw instance with the row's incarnation, a
+// number from a monotonic counter unique to every row the binding creates.
+type rowOwner struct {
+	scip *C.SCIP
+	inc  uint64
+}
 
 // rowsReleasedForTest counts binding-owned captures released, so tests can
 // pin the ownership rules without dipping into C. Same-package tests reset
 // it directly.
 var rowsReleasedForTest int
 
-// deadRows records rows whose final capture the binding dropped itself —
-// through Row.Release, or an add SCIP did not retain — keyed by pointer and
-// owning instance, so every handle minted before the drop fails its
-// liveness check instead of dereferencing freed memory. ownRow deletes an
-// entry when the address is reused for a fresh row. Rows SCIP releases on
-// its own (a cut removed from the LP) remain undetectable here; that is
-// the open handle-liveness problem of #20.
+// deadRows records the rows whose final capture the binding dropped
+// deterministically — through Row.Release, or the teardown sweeps for rows
+// that were never added — as a tombstone keyed by pointer and valued by the
+// dead row's incarnation. A handle dies when a tombstone at its address is
+// at least as new as the handle's incarnation, so a released row stays
+// dead even after the address is reused for a fresh one (which simply gets
+// a higher incarnation), and tombstones never need clearing. Rows the
+// binding adds are never tombstoned: SCIP holds its own capture while it
+// uses them, and they stay inspectable. Rows SCIP releases on its own (a
+// cut removed from the LP) remain undetectable here; that is the open
+// handle-liveness problem of #20.
 var deadRows = struct {
 	sync.Mutex
-	m map[*C.SCIP_ROW]*C.SCIP
-}{m: make(map[*C.SCIP_ROW]*C.SCIP)}
+	m map[*C.SCIP_ROW]uint64
+}{m: make(map[*C.SCIP_ROW]uint64)}
 
 // poisonRow marks a row as gone: the binding dropped its final capture.
-func poisonRow(row *C.SCIP_ROW, owner *C.SCIP) {
+func poisonRow(row *C.SCIP_ROW, inc uint64) {
 	deadRows.Lock()
-	deadRows.m[row] = owner
+	if deadRows.m[row] < inc {
+		deadRows.m[row] = inc
+	}
 	deadRows.Unlock()
 }
 
-// unpoisonRow clears the dead mark, for the address reused by a fresh row.
-func unpoisonRow(row *C.SCIP_ROW) {
-	deadRows.Lock()
-	delete(deadRows.m, row)
-	deadRows.Unlock()
-}
-
-// deadRowErr reports the error a method on a released row returns.
+// deadRowErr reports the error a method on a released row returns. Query
+// handles (incarnation 0) are never killed by tombstones: the binding did
+// not mint them and cannot know which allocation of the address they saw.
 func (r Row) deadRowErr(op string) error {
-	deadRows.Lock()
-	owner := deadRows.m[r.raw]
-	deadRows.Unlock()
-	if owner == nil || r.scip == nil || owner != r.scip.raw {
+	if r.inc == 0 || r.raw == nil {
 		return nil
 	}
-	return (&Error{Op: op, Retcode: RetcodeInvalidCall, Detail: "row was released"})
+	deadRows.Lock()
+	tomb := deadRows.m[r.raw]
+	deadRows.Unlock()
+	if tomb >= r.inc {
+		return (&Error{Op: op, Retcode: RetcodeInvalidCall, Detail: "row was released"})
+	}
+	return nil
 }
 
-// ownRow records the binding's capture on a freshly created row.
-func ownRow(s *Scip, row *C.SCIP_ROW) {
+// ownRow records the binding's capture on a freshly created row and hands
+// back the row's incarnation.
+func ownRow(s *Scip, row *C.SCIP_ROW) uint64 {
 	rowOwners.Lock()
-	rowOwners.rows[row] = s.raw
+	rowOwners.nextInc++
+	inc := rowOwners.nextInc
+	rowOwners.rows[row] = rowOwner{scip: s.raw, inc: inc}
 	rowOwners.Unlock()
-	unpoisonRow(row) // the address may have belonged to a released row
+	return inc
 }
 
 // releaseOwnedRow drops the binding's capture on row if it belongs to the
@@ -87,13 +102,17 @@ func releaseOwnedRowErr(s *Scip, row *C.SCIP_ROW) (bool, error) {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	rowOwners.Lock()
 	owner, ok := rowOwners.rows[row]
-	if !ok || owner != s.raw {
+	if !ok || owner.scip != s.raw {
 		rowOwners.Unlock()
 		return false, nil
 	}
 	delete(rowOwners.rows, row)
 	rowOwners.Unlock()
 
+	// No tombstone here: the add paths share this helper, and a row SCIP
+	// retained is alive in the separation storage, the LP or the cut pool —
+	// inspectable, exactly as documented. Only the callers that know the
+	// capture was the last one poison the handle.
 	r := row
 	if err := retcodeError(C.SCIPreleaseRow(s.raw, &r)); err != nil {
 		rowOwners.Lock()
@@ -101,7 +120,6 @@ func releaseOwnedRowErr(s *Scip, row *C.SCIP_ROW) (bool, error) {
 		rowOwners.Unlock()
 		return false, err
 	}
-	poisonRow(row, owner) // the handle must not outlive the final capture
 	rowOwners.Lock()
 	rowsReleasedForTest++
 	rowOwners.Unlock()
@@ -109,8 +127,8 @@ func releaseOwnedRowErr(s *Scip, row *C.SCIP_ROW) (bool, error) {
 }
 
 // releaseOwnedRow is releaseOwnedRowErr for the post-add paths, which are
-// best-effort: the add itself took a capture, so a failed release only
-// defers the row's reclamation to teardown.
+// best-effort and must not tombstone: the add itself took a capture, so
+// the row stays alive and inspectable while SCIP uses it.
 func releaseOwnedRow(s *Scip, row *C.SCIP_ROW) bool {
 	ok, _ := releaseOwnedRowErr(s, row)
 	return ok
@@ -124,7 +142,7 @@ func releaseOwnedRow(s *Scip, row *C.SCIP_ROW) bool {
 func discardRowsOfOwner(raw *C.SCIP) {
 	rowOwners.Lock()
 	for row, owner := range rowOwners.rows {
-		if owner == raw {
+		if owner.scip == raw {
 			delete(rowOwners.rows, row)
 		}
 	}
@@ -137,10 +155,12 @@ func discardRowsOfOwner(raw *C.SCIP) {
 // back, so a later teardown can retry them.
 func releaseRowsOfOwner(raw *C.SCIP) error {
 	rowOwners.Lock()
-	var owned []*C.SCIP_ROW
+	var rows []*C.SCIP_ROW
+	var owners []rowOwner
 	for row, owner := range rowOwners.rows {
-		if owner == raw {
-			owned = append(owned, row)
+		if owner.scip == raw {
+			rows = append(rows, row)
+			owners = append(owners, owner)
 			delete(rowOwners.rows, row)
 		}
 	}
@@ -148,25 +168,32 @@ func releaseRowsOfOwner(raw *C.SCIP) error {
 
 	var firstErr error
 	var failed []*C.SCIP_ROW
-	for _, row := range owned {
+	var failedOwners []rowOwner
+	for i, row := range rows {
 		r := row
 		if err := retcodeError(C.SCIPreleaseRow(raw, &r)); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
 			failed = append(failed, row)
+			failedOwners = append(failedOwners, owners[i])
+		} else {
+			// These were never added: the binding's capture was the last
+			// one, so the row is gone and its handle must die — even if
+			// SCIPfreeTransform is about to fail.
+			poisonRow(row, owners[i].inc)
 		}
 	}
 	if len(failed) > 0 {
 		// Put the refused rows back so a later teardown can retry them.
 		rowOwners.Lock()
-		for _, row := range failed {
-			rowOwners.rows[row] = raw
+		for i, row := range failed {
+			rowOwners.rows[row] = failedOwners[i]
 		}
 		rowOwners.Unlock()
 	}
 	rowOwners.Lock()
-	rowsReleasedForTest += len(owned) - len(failed)
+	rowsReleasedForTest += len(rows) - len(failed)
 	rowOwners.Unlock()
 	return firstErr
 }
@@ -195,9 +222,13 @@ func (r Row) TryRelease() error {
 		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
 			Detail: "row was not created by the binding, or is already released"})
 	}
-	if owner != r.scip.raw {
+	if owner.scip != r.scip.raw {
 		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
 			Detail: "row belongs to another model"})
+	}
+	if owner.inc != r.inc {
+		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
+			Detail: "row was not created by the binding, or is already released"})
 	}
 	released, err := releaseOwnedRowErr(r.scip, r.raw)
 	if err != nil {
@@ -207,6 +238,10 @@ func (r Row) TryRelease() error {
 		return (&Error{Op: "Row.Release", Retcode: RetcodeInvalidData,
 			Detail: "row was not created by the binding, or is already released"})
 	}
+	// The binding's capture was the last one (an added row is no longer
+	// owned): the row is freed and every handle to it must die, including
+	// across a later reuse of the address.
+	poisonRow(r.raw, r.inc)
 	return nil
 }
 
