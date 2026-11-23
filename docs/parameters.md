@@ -76,13 +76,30 @@ if h, ok := model.FindHeuristic("rens"); ok {
 if s, ok := model.FindSeparator("gomory"); ok {
 	model.SetSeparatorPriority(s, 2000000) // ahead of every built-in separator
 }
+if b, ok := model.FindBranchRule("relpscost"); ok {
+	model.SetBranchRulePriority(b, -1) // let another rule go first
+}
+if n, ok := model.FindNodesel("bfs"); ok {
+	model.SetNodeselStdPriority(n, 0)
+	model.SetNodeselMemSavePriority(n, 0)
+}
 ```
 
-`SetHeuristicPriority`, `SetSeparatorPriority` and `SetPresolverPriority`
-change priorities; heuristics and separators have `SetFreq`. Everything
-else on a built-in plugin, such as its `maxdepth`, is a parameter named
-`heuristics/<name>/<setting>`, `separating/<name>/<setting>` or
-`presolving/<name>/<setting>`.
+`Heuristics`, `Separators`, `Presolvers`, `BranchRules`, `Nodesels`,
+`Pricers`, `Conshdlrs`, `Eventhdlrs` and `Propagators` list every plugin
+of that kind; the matching `Find*` method fetches one by name.
+`SetHeuristicPriority`, `SetSeparatorPriority`, `SetPresolverPriority` and
+`SetBranchRulePriority` change priorities. Node selectors have two,
+`SetNodeselStdPriority` and `SetNodeselMemSavePriority`. Heuristics and
+separators have `SetFreq`. A constraint handler reports `EnfoPriority` and
+`CheckPriority`. A propagator reports `Priority`, `Freq`, `Timing` and its
+call counts (`NCalls`, `NCutoffs`, `NDomredsFound`, `Time`).
+
+Everything else on a built-in plugin, such as its `maxdepth`, is a
+parameter named `heuristics/<name>/<setting>`,
+`separating/<name>/<setting>`, `presolving/<name>/<setting>`,
+`branching/<name>/<setting>`, `nodeselection/<name>/<setting>`,
+`propagating/<name>/<setting>` or `constraints/<name>/<setting>`.
 
 ## Parameters worth knowing
 

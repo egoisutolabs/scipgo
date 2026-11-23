@@ -4,6 +4,10 @@ An event handler is called when something happens during the solve: a node
 is focused, an LP is solved, a new incumbent is found. Use one to collect
 statistics, drive a progress display, or react to a new solution.
 
+`Eventhdlrs` lists every event handler in the model, including SCIP's
+`softtimelimit`, `estim` and `solvingphase`. `FindEventhdlr` fetches one
+by name.
+
 ## Interface
 
 ```go

@@ -71,6 +71,9 @@ check priority, and they matter:
 
 Most custom handlers use `-1, -1`, as the TSP example does. SCIP's linear
 constraint handler sits at -1000000 for both, so `-1` still runs before it.
+`Conshdlrs` lists every handler, `FindConshdlr("linear")` returns that
+built-in one, and `EnfoPriority` and `CheckPriority` read the two
+priorities back.
 
 ## Example: subtour elimination
 

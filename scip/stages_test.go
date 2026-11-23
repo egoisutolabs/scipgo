@@ -38,6 +38,12 @@ func queryCalls(m Model) map[string]func() {
 		"LpStatus": func() { m.LpStatus() }, "VarInProb": func() { m.VarInProb(0) }, "Eps": func() { m.Eps() },
 		"Eq": func() { m.Eq(1, 1) }, "Heuristics": func() { m.Heuristics() }, "FindHeuristic": func() { m.FindHeuristic("x") },
 		"Separators": func() { m.Separators() }, "Presolvers": func() { m.Presolvers() }, "PrintVersion": m.PrintVersion,
+		"BranchRules": func() { m.BranchRules() }, "FindBranchRule": func() { m.FindBranchRule("x") },
+		"Nodesels": func() { m.Nodesels() }, "FindNodesel": func() { m.FindNodesel("x") },
+		"Pricers": func() { m.Pricers() }, "FindPricer": func() { m.FindPricer("x") },
+		"Conshdlrs": func() { m.Conshdlrs() }, "FindConshdlr": func() { m.FindConshdlr("x") },
+		"Eventhdlrs": func() { m.Eventhdlrs() }, "FindEventhdlr": func() { m.FindEventhdlr("x") },
+		"Propagators": func() { m.Propagators() }, "FindPropagator": func() { m.FindPropagator("x") },
 		"BestNode": func() { m.BestNode() }, "Leaves": func() { m.Leaves() }, "InProbing": func() { InProbing(m) },
 		"InDive": func() { InDive(m) },
 	}
@@ -57,7 +63,11 @@ func TestQueriesInInitStageDoNotAbort(t *testing.T) {
 	defer m.Free()
 	// legal in every stage
 	for name, f := range map[string]func(){"Status": func() { m.Status() }, "Eps": func() { m.Eps() },
-		"Heuristics": func() { m.Heuristics() }, "InProbing": func() { InProbing(m) }, "InDive": func() { InDive(m) }} {
+		"Heuristics": func() { m.Heuristics() }, "InProbing": func() { InProbing(m) }, "InDive": func() { InDive(m) },
+		"BranchRules": func() { m.BranchRules() }, "Nodesels": func() { m.Nodesels() }, "Pricers": func() { m.Pricers() },
+		"Conshdlrs": func() { m.Conshdlrs() }, "Eventhdlrs": func() { m.Eventhdlrs() }, "Propagators": func() { m.Propagators() },
+		"FindBranchRule": func() { m.FindBranchRule("relpscost") }, "FindNodesel": func() { m.FindNodesel("bfs") },
+		"FindConshdlr": func() { m.FindConshdlr("linear") }, "FindPropagator": func() { m.FindPropagator("probing") }} {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
