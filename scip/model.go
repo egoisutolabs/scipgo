@@ -857,6 +857,34 @@ func (m Model) IncludeConshdlr(name, desc string, enfopriority, checkpriority in
 	must(m.TryIncludeConshdlr(name, desc, enfopriority, checkpriority, conshdlr))
 }
 
+// TryIncludePropagator includes a propagator. prop may also implement
+// PropagatorPresol, in which case PresolveProp runs during presolving, and
+// Copyable, in which case the propagator is copied into sub-SCIPs. The value
+// Copy returns is what the copy includes, so optional interfaces are detected
+// on that value.
+//
+// priority >= 0 runs before constraint handlers and < 0 after them. freq is
+// the depth frequency (1 every node, 0 root only, -1 never). timing selects
+// the node-loop points. presolPriority, presolMaxRounds (-1 for no limit)
+// and presolTiming apply to the presolve hook and are ignored when prop does
+// not implement PropagatorPresol.
+func (m Model) TryIncludePropagator(name, desc string, priority, freq int32, delay bool, timing PropTiming, presolPriority, presolMaxRounds int32, presolTiming PresolTiming, prop Propagator) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.guard("IncludePropagator"); err != nil {
+		return err
+	}
+	if isNilInterface(prop) {
+		return m.invalid("IncludePropagator", RetcodeInvalidData, "nil plugin")
+	}
+	return m.wrap("IncludePropagator", m.scip.includePropagator(name, desc, priority, freq, delay, timing, presolPriority, presolMaxRounds, presolTiming, prop), name)
+}
+
+// IncludePropagator includes a propagator in the model; see
+// TryIncludePropagator. It panics on failure.
+func (m Model) IncludePropagator(name, desc string, priority, freq int32, delay bool, timing PropTiming, presolPriority, presolMaxRounds int32, presolTiming PresolTiming, prop Propagator) {
+	must(m.TryIncludePropagator(name, desc, priority, freq, delay, timing, presolPriority, presolMaxRounds, presolTiming, prop))
+}
+
 // TryAdd adds builders (variables, constraints, rows, plugins) to the model,
 // discarding any return value, and stops at the first failure. Use the
 // builders' TryAddTo methods when the created object is needed.
@@ -881,6 +909,8 @@ func (m Model) TryAdd(items ...any) error {
 		case SeparatorBuilder:
 			err = b.TryAddTo(m)
 		case NodeselBuilder:
+			err = b.TryAddTo(m)
+		case PropagatorBuilder:
 			err = b.TryAddTo(m)
 		default:
 			err = m.invalid("Add", RetcodeInvalidData, fmt.Sprintf("cannot add a value of type %T", it))

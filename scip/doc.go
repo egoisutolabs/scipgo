@@ -21,7 +21,7 @@
 // ConsBuilder.Expression adds it. ParseExpr accepts SCIP's own syntax.
 //
 // Custom plugins (BranchRule, Conshdlr, Eventhdlr, Heuristic, Nodesel,
-// Pricer, Separator) are Go interfaces registered through Model.Add or the
+// Pricer, Propagator, Separator) are Go interfaces registered through Model.Add or the
 // Include* methods. A plugin that also implements Copyable is copied into the
 // sub-SCIPs SCIP creates for LNS heuristics and SolveConcurrent workers.
 // Panics inside a callback are captured and re-raised from the enclosing

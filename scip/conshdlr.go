@@ -49,6 +49,7 @@ const (
 	PropResultReducedDom                   // The domain of a variable was reduced
 	PropResultCutOff                       // The node is infeasible and can be cut off
 	PropResultDelayed                      // Skipped, but should be called again
+	PropResultDelayNode                    // Postpone the current node (only valid before the LP)
 )
 
 func propResultToC(r PropResult) C.SCIP_RESULT {
@@ -61,6 +62,8 @@ func propResultToC(r PropResult) C.SCIP_RESULT {
 		return C.SCIP_CUTOFF
 	case PropResultDelayed:
 		return C.SCIP_DELAYED
+	case PropResultDelayNode:
+		return C.SCIP_DELAYNODE
 	default:
 		return C.SCIP_DIDNOTRUN
 	}

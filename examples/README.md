@@ -26,6 +26,7 @@ builds all of them.
 | [`depth_first_node_selection`](depth_first_node_selection) | Node selector | A `Select` that dives (child, sibling, best leaf) and a `Comp` that orders by depth |
 | [`node_event_handler`](node_event_handler) | Event handler | Counting `NodeFocused` events and checking the count against `NNodes` |
 | [`random_rounding`](random_rounding) | Heuristic | Rounding the LP solution, submitting it with `CreateSolFor` and `AddSol`, and reading the heuristic's statistics |
+| [`bound_propagator`](bound_propagator) | Propagator | Tightening a variable's upper bound with `TightenVarUb` and checking the objective |
 | [`clique_separator`](clique_separator) | Separator | Building a conflict graph, finding a clique and adding the clique cut as a row |
 | [`tsp`](tsp) | Constraint handler | Subtour elimination for a 280-city TSP: `Check` on integral solutions, `Enforce` adding cuts |
 

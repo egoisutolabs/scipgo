@@ -2,7 +2,7 @@
 
 SCIP is built from plugins: branching rules, heuristics, separators,
 pricers, constraint handlers, event handlers and node selectors, among
-others. scipgo lets you write seven of those kinds in Go and register them
+others. scipgo lets you write eight of those kinds in Go and register them
 alongside SCIP's own. This page covers what they share; each kind has its
 own page.
 
@@ -14,6 +14,7 @@ own page.
 | Primal heuristic | `Heuristic` | `NewHeuristic` | `HeuristicPlugin` | [Heuristics](heuristics.md) |
 | Node selector | `Nodesel` | `NewNodesel` | `NodeselPlugin` | [Node selectors](node-selectors.md) |
 | Pricer | `Pricer` | `NewPricer` | `PricerPlugin` | [Pricers](pricers.md) |
+| Propagator | `Propagator` | `NewPropagator` | `PropagatorPlugin` | [Propagators](propagators.md) |
 | Separator | `Separator` | `NewSeparator` | `SeparatorPlugin` | [Separators](separators.md) |
 
 ## Writing one
@@ -62,6 +63,7 @@ Through that model a callback can:
 - create children with `CreateChild` and tighten their bounds with
   `SetLbNode` and `SetUbNode`;
 - create and submit solutions with `CreateSolFor` and `AddSol`;
+- tighten the current node's bounds with `TightenVarLb` and `TightenVarUb`;
 - run [probing and diving](../probing-and-diving.md) sessions;
 - ask the solve to stop with `Interrupt`.
 
@@ -179,6 +181,7 @@ that a custom plugin runs, and for most kinds runs first:
 | `NewHeuristic` | 100000 | `Freq(1)`, `FreqOfs(0)`, `MaxDepth(-1)`, `Timing(HeurTimingBeforeNode)`, `DispChar('?')`, `UsesSubscip(false)` |
 | `NewNodesel` | 1000000 std and memsave | Higher than every built-in selector, so the custom one is used |
 | `NewPricer` | 100000 | `Delay(false)` |
+| `NewPropagator` | 100000 | `Freq(1)`, `Timing(PropTimingBeforeLp)`, `Delay(false)`. Presolve hook: priority 100000, `PresolMaxRounds(-1)`, `PresolTiming(PresolTimingAlways)` |
 | `NewSeparator` | 100000 | `Freq(1)`, `MaxBoundDist(1.0)`, `UsesSubscip(false)`, `Delay(false)` |
 
 For comparison, in SCIP 10 the default branching rule `relpscost` has
@@ -195,8 +198,9 @@ kinds this table does not let you write. `BranchRules`, `Nodesels`,
 `Pricers`, `Conshdlrs` and `Eventhdlrs` list what the model has, and
 `FindBranchRule("relpscost")`, `FindNodesel("bfs")`, `FindConshdlr("linear")`
 and `FindEventhdlr` fetch one by name. `Propagators` and `FindPropagator`
-do the same for SCIP's propagators: the wrapper is read-only and reports
-priority, frequency, timing and call statistics. Priorities that can be
+do the same for SCIP's propagators. That wrapper is also what a Go
+propagator's callback receives. It reports priority, frequency, timing
+and call statistics, and `SetFreq` changes the frequency. Priorities that can be
 changed after inclusion are described under
 [Tuning individual plugins](../parameters.md#tuning-individual-plugins).
 

@@ -112,10 +112,12 @@ if n, ok := model.FindNodesel("bfs"); ok {
 of that kind; the matching `Find*` method fetches one by name.
 `SetHeuristicPriority`, `SetSeparatorPriority`, `SetPresolverPriority` and
 `SetBranchRulePriority` change priorities. Node selectors have two,
-`SetNodeselStdPriority` and `SetNodeselMemSavePriority`. Heuristics and
-separators have `SetFreq`. A constraint handler reports `EnfoPriority` and
-`CheckPriority`. A propagator reports `Priority`, `Freq`, `Timing` and its
-call counts (`NCalls`, `NCutoffs`, `NDomredsFound`, `Time`).
+`SetNodeselStdPriority` and `SetNodeselMemSavePriority`. Heuristics,
+separators and propagators have `SetFreq`. A constraint handler reports
+`EnfoPriority` and `CheckPriority`. A propagator reports `Priority`,
+`Freq`, `Timing` and its call counts (`NCalls`, `NCutoffs`,
+`NDomredsFound`, `Time`). The same `PropagatorPlugin` is what a Go
+propagator's callback receives.
 
 Everything else on a built-in plugin, such as its `maxdepth`, is a
 parameter named `heuristics/<name>/<setting>`,

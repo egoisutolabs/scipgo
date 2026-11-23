@@ -12,6 +12,7 @@ uintptr_t scipgo_pricerId(SCIP_PRICER* pricer) { return (uintptr_t)SCIPpricerGet
 uintptr_t scipgo_heurId(SCIP_HEUR* heur) { return (uintptr_t)SCIPheurGetData(heur); }
 uintptr_t scipgo_sepaId(SCIP_SEPA* sepa) { return (uintptr_t)SCIPsepaGetData(sepa); }
 uintptr_t scipgo_conshdlrId(SCIP_CONSHDLR* conshdlr) { return (uintptr_t)SCIPconshdlrGetData(conshdlr); }
+uintptr_t scipgo_propId(SCIP_PROP* prop) { return (uintptr_t)SCIPpropGetData(prop); }
 
 /* ------------------------------ branchrule ------------------------------ */
 
@@ -186,6 +187,46 @@ SCIP_RETCODE scipgo_includeSepa(SCIP* scip, const char* name, const char* desc, 
     return SCIPincludeSepa(scip, name, desc, priority, freq, maxbounddist,
         (SCIP_Bool)usesubscip, (SCIP_Bool)delay, hascopy ? scipgo_sepacopy : NULL,
         scipgo_sepafree, NULL, NULL, NULL, NULL, scipgo_sepaexeclp, scipgo_sepaexecsol, (void*)data);
+}
+
+/* ------------------------------- propagator ----------------------------- */
+
+static SCIP_DECL_PROPFREE(scipgo_propfree)
+{
+    return GoPropFree(scip, prop);
+}
+
+static SCIP_DECL_PROPEXEC(scipgo_propexec)
+{
+    return GoPropExec(scip, prop, proptiming, result);
+}
+
+static SCIP_DECL_PROPPRESOL(scipgo_proppresol)
+{
+    return GoPropPresol(scip, prop, nrounds, presoltiming,
+        nnewfixedvars, nnewaggrvars, nnewchgvartypes, nnewchgbds, nnewholes,
+        nnewdelconss, nnewaddconss, nnewupgdconss, nnewchgcoefs, nnewchgsides,
+        nfixedvars, naggrvars, nchgvartypes, nchgbds, naddholes,
+        ndelconss, naddconss, nupgdconss, nchgcoefs, nchgsides, result);
+}
+
+static SCIP_DECL_PROPCOPY(scipgo_propcopy)
+{
+    return GoPropCopy(scip, prop);
+}
+
+SCIP_RETCODE scipgo_includeProp(SCIP* scip, const char* name, const char* desc,
+    int priority, int freq, int delay, unsigned int timing,
+    int presolpriority, int presolmaxrounds, unsigned int presoltiming,
+    int haspresol, int hascopy, uintptr_t data)
+{
+    return SCIPincludeProp(scip, name, desc, priority, freq, (SCIP_Bool)delay,
+        (SCIP_PROPTIMING)timing, presolpriority, presolmaxrounds,
+        (SCIP_PRESOLTIMING)presoltiming,
+        hascopy ? scipgo_propcopy : NULL, scipgo_propfree,
+        NULL, NULL, NULL, NULL, NULL, NULL,
+        haspresol ? scipgo_proppresol : NULL, scipgo_propexec, NULL,
+        (SCIP_PROPDATA*)(void*)data);
 }
 
 /* ------------------------------- conshdlr ------------------------------- */

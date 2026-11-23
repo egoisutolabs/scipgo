@@ -7,6 +7,7 @@ import "C"
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"runtime"
@@ -314,6 +315,68 @@ func callbackError(scip *C.SCIP) error {
 	first := ps[0]
 	first.More = ps[1:]
 	return first
+}
+
+// propPresolMaxRounds keeps the one propagator setting SCIP does not expose
+// a getter for, keyed by the registry id stored in the plugin data, so a
+// copy can be re-included with the same presolve round limit.
+var propPresolMaxRounds = struct {
+	sync.Mutex
+	m map[uintptr]int32
+}{m: make(map[uintptr]int32)}
+
+func rememberPropPresolMaxRounds(id uintptr, rounds int32) {
+	propPresolMaxRounds.Lock()
+	propPresolMaxRounds.m[id] = rounds
+	propPresolMaxRounds.Unlock()
+}
+
+func forgetPropPresolMaxRounds(id uintptr) {
+	propPresolMaxRounds.Lock()
+	delete(propPresolMaxRounds.m, id)
+	propPresolMaxRounds.Unlock()
+}
+
+func propPresolMaxRoundsOf(id uintptr) int32 {
+	propPresolMaxRounds.Lock()
+	defer propPresolMaxRounds.Unlock()
+	if rounds, ok := propPresolMaxRounds.m[id]; ok {
+		return rounds
+	}
+	return -1
+}
+
+// writePresolResult adds the callback's reductions to SCIP's running totals.
+// DELAYED and a count SCIP cannot store fail the callback: SCIP 10 rejects
+// DELAYED from a propagator's presolve method, and a negative delta trips
+// an assertion in the presolve driver.
+func writePresolResult(scip *C.SCIP, id uintptr, res PresolResult, nfixedvars, naggrvars, nchgvartypes, nchgbds, naddholes, ndelconss, naddconss, nupgdconss, nchgcoefs, nchgsides *C.int, result *C.SCIP_RESULT) C.SCIP_RETCODE {
+	if res.Status == PresolStatusDelayed {
+		stashPanic(scip, pluginLabel("propagator", id), "PresolProp returned Delayed, which SCIP 10 rejects from a propagator's presolve method")
+		return C.SCIP_ERROR
+	}
+	counts := []int{
+		res.NFixedVars, res.NAggrVars, res.NChgVarTypes, res.NChgBds, res.NAddHoles,
+		res.NDelConss, res.NAddConss, res.NUpgdConss, res.NChgCoefs, res.NChgSides,
+	}
+	for _, n := range counts {
+		if n < 0 || int64(n) > math.MaxInt32 {
+			stashPanic(scip, pluginLabel("propagator", id), "PresolResult reduction counts must be non-negative and fit in a C int")
+			return C.SCIP_ERROR
+		}
+	}
+	*nfixedvars += C.int(res.NFixedVars)
+	*naggrvars += C.int(res.NAggrVars)
+	*nchgvartypes += C.int(res.NChgVarTypes)
+	*nchgbds += C.int(res.NChgBds)
+	*naddholes += C.int(res.NAddHoles)
+	*ndelconss += C.int(res.NDelConss)
+	*naddconss += C.int(res.NAddConss)
+	*nupgdconss += C.int(res.NUpgdConss)
+	*nchgcoefs += C.int(res.NChgCoefs)
+	*nchgsides += C.int(res.NChgSides)
+	*result = presolStatusToC(res.Status)
+	return C.SCIP_OKAY
 }
 
 // includeResult converts an include retcode, dropping the registry entry on
@@ -712,6 +775,85 @@ func GoSepaExecLp(scip *C.SCIP, sepa *C.SCIP_SEPA, result *C.SCIP_RESULT, allowl
 //export GoSepaExecSol
 func GoSepaExecSol(scip *C.SCIP, sepa *C.SCIP_SEPA, sol *C.SCIP_SOL, result *C.SCIP_RESULT, allowlocal C.uint, depth C.int) (ret C.SCIP_RETCODE) {
 	return C.SCIP_OKAY
+}
+
+// --------------------------------------------------------------- propagator
+
+//export GoPropFree
+func GoPropFree(scip *C.SCIP, prop *C.SCIP_PROP) (ret C.SCIP_RETCODE) {
+	ret = C.SCIP_ERROR
+	defer catchPanic(scip, "propagator", uintptr(C.scipgo_propId(prop)))
+	id := uintptr(C.scipgo_propId(prop))
+	plugins.del(id)
+	forgetPropPresolMaxRounds(id)
+	copyDies(scip)
+	ret = C.SCIP_OKAY
+	return
+}
+
+//export GoPropCopy
+func GoPropCopy(scip *C.SCIP, prop *C.SCIP_PROP) (ret C.SCIP_RETCODE) {
+	ret = C.SCIP_ERROR
+	defer catchPanic(scip, "propagator", uintptr(C.scipgo_propId(prop)))
+	id := uintptr(C.scipgo_propId(prop))
+	p, ok := pluginCopy[Propagator](scip, id)
+	if !ok {
+		return
+	}
+	if err := weakScip(scip).includePropagator(
+		goString(C.SCIPpropGetName(prop)), goString(C.SCIPpropGetDesc(prop)),
+		int32(C.SCIPpropGetPriority(prop)), int32(C.SCIPpropGetFreq(prop)),
+		C.SCIPpropIsDelayed(prop) != 0, PropTiming(C.SCIPpropGetTimingmask(prop)),
+		int32(C.SCIPpropGetPresolPriority(prop)), propPresolMaxRoundsOf(id),
+		PresolTiming(C.SCIPpropGetPresolTiming(prop)), p); err != nil {
+		return errToC(err)
+	}
+	ret = C.SCIP_OKAY
+	return
+}
+
+//export GoPropExec
+func GoPropExec(scip *C.SCIP, prop *C.SCIP_PROP, proptiming C.SCIP_PROPTIMING, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
+	ret = C.SCIP_ERROR
+	defer catchPanic(scip, "propagator", uintptr(C.scipgo_propId(prop)))
+	p, model, ok := pluginAs[Propagator](scip, uintptr(C.scipgo_propId(prop)))
+	if !ok {
+		return
+	}
+	// The firing bit is not forwarded: Propagate sees the registered mask
+	// through PropagatorPlugin.Timing.
+	_ = proptiming
+	*result = propResultToC(p.Propagate(model, PropagatorPlugin{raw: prop, scip: model.scip}))
+	ret = C.SCIP_OKAY
+	return
+}
+
+//export GoPropPresol
+func GoPropPresol(scip *C.SCIP, prop *C.SCIP_PROP, nrounds C.int, presoltiming C.SCIP_PRESOLTIMING, nnewfixedvars, nnewaggrvars, nnewchgvartypes, nnewchgbds, nnewholes, nnewdelconss, nnewaddconss, nnewupgdconss, nnewchgcoefs, nnewchgsides C.int, nfixedvars, naggrvars, nchgvartypes, nchgbds, naddholes, ndelconss, naddconss, nupgdconss, nchgcoefs, nchgsides *C.int, result *C.SCIP_RESULT) (ret C.SCIP_RETCODE) {
+	ret = C.SCIP_ERROR
+	defer catchPanic(scip, "propagator", uintptr(C.scipgo_propId(prop)))
+	p, model, ok := pluginAs[PropagatorPresol](scip, uintptr(C.scipgo_propId(prop)))
+	if !ok {
+		return
+	}
+	// Round, timing and the nnew* deltas stay on the C side. PresolveProp
+	// receives the model and the plugin only.
+	_ = nrounds
+	_ = presoltiming
+	_ = nnewfixedvars
+	_ = nnewaggrvars
+	_ = nnewchgvartypes
+	_ = nnewchgbds
+	_ = nnewholes
+	_ = nnewdelconss
+	_ = nnewaddconss
+	_ = nnewupgdconss
+	_ = nnewchgcoefs
+	_ = nnewchgsides
+	res := p.PresolveProp(model, PropagatorPlugin{raw: prop, scip: model.scip})
+	return writePresolResult(scip, uintptr(C.scipgo_propId(prop)), res,
+		nfixedvars, naggrvars, nchgvartypes, nchgbds, naddholes,
+		ndelconss, naddconss, nupgdconss, nchgcoefs, nchgsides, result)
 }
 
 // ---------------------------------------------------------------- conshdlr
