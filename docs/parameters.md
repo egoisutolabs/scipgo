@@ -14,11 +14,19 @@ model, err := model.SetIntParam("display/freq", 100)
 model, err = model.SetLongintParam("limits/nodes", 10000)
 model, err = model.SetRealParam("limits/gap", 0.01)
 model, err = model.SetBoolParam("lp/presolving", false)
+model, err = model.SetCharParam("lp/initalgorithm", 'd')
+model, err = model.TrySetCharParam("lp/pricing", 's')
 model, err = model.SetStrParam("visual/vbcfilename", "tree.vbc")
 
 freq := model.IntParam("display/freq") // panics on failure
 freq, err = model.TryIntParam("display/freq")
+algo := model.CharParam("lp/initalgorithm")
+algo, err = model.TryCharParam("lp/initalgorithm")
 ```
+
+`SetCharParam` and `TrySetCharParam` are the same call. Both return the
+error, as the other `Set*Param` methods do. A character constant is a
+`byte` argument when it fits in one byte.
 
 `scip.SetParam` and `scip.GetParam` dispatch on the Go type instead:
 
@@ -26,21 +34,35 @@ freq, err = model.TryIntParam("display/freq")
 model, err := scip.SetParam(model, "limits/nodes", int64(10000))
 var nodes int64
 err = scip.GetParam(model, "limits/nodes", &nodes)
+
+model, err = scip.SetParam(model, "lp/initalgorithm", 'd')
+var algo byte
+err = scip.GetParam(model, "lp/initalgorithm", &algo)
 ```
 
-`SetParam` accepts `int`, `int32`, `int64`, `float32`, `float64`, `bool`
-and `string`. An `int` is sent as SCIP's `int` type, so a long-integer
-parameter such as `limits/nodes` must be passed as `int64`. `GetParam`
-takes a pointer of the matching type.
+`SetParam` accepts `int`, `int32`, `int64`, `float32`, `float64`, `bool`,
+`string` and `byte`. An `int` is sent as SCIP's `int` type, so a
+long-integer parameter such as `limits/nodes` is passed as `int64`. A
+`byte` sets a char parameter. A character literal does too when that
+parameter is a char: Go gives a literal such as `'d'` the type `rune`, and
+`rune` is an alias of `int32`, so `SetParam` reads the parameter's SCIP
+type and sends an ASCII `int32` to the char setter for a char parameter.
+The same `int32` sent to an integer parameter stays an integer, which
+keeps `SetParam(model, "display/verblevel", int32(0))` on the integer
+setter. `GetParam` takes a pointer of the matching type. A char parameter
+is read into a `*byte`.
 
 Every error from the parameter API, typed or generic, is a `*scip.Error`
 whose `Retcode` tells the cause: `RetcodeParameterUnknown`,
 `RetcodeParameterWrongType` or `RetcodeParameterWrongVal` from SCIP, and
 `RetcodeInvalidData` when `SetParam` or `GetParam` is handed a Go type it
 does not support, such as a `uint` value or a `*float32` destination. An
-`int` outside the `int32` range is `RetcodeParameterWrongVal`. Failures
-SCIP itself reports also print a line to stderr; [Logging](logging.md)
-explains how to redirect that.
+`int` outside the `int32` range is `RetcodeParameterWrongVal`. A rune
+outside ASCII for a char parameter is `RetcodeInvalidData`, and that value
+is rejected before the SCIP call. A value outside the parameter's allowed
+set, such as `'z'` for `lp/pricing`, is `RetcodeParameterWrongVal` from
+SCIP. Failures SCIP itself reports also print a line to stderr;
+[Logging](logging.md) explains how to redirect that.
 
 ## Convenience methods
 
@@ -100,6 +122,8 @@ else on a built-in plugin, such as its `maxdepth`, is a parameter named
 | `parallel/maxnthreads` | int | 8 | Threads for `SolveConcurrent` |
 | `parallel/mode` | int | 1 | 0 opportunistic, 1 deterministic |
 | `lp/threads` | int | 0 | Threads for the LP solver, 0 for automatic |
+| `lp/initalgorithm` | char | s | Initial LP algorithm: `s` simplex, `p` primal, `d` dual, `b` barrier, `c` barrier with crossover |
+| `lp/pricing` | char | l | LP pricing strategy, one of `l`, `a`, `f`, `p`, `s`, `q`, `d` |
 | `presolving/maxrounds` | int | -1 | Presolving rounds, 0 disables presolving |
 | `misc/usesymmetry` | int | 7 | Symmetry handling, 0 disables it |
 | `numerics/feastol` | real | 1e-6 | Primal feasibility tolerance |
