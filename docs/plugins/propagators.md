@@ -108,9 +108,12 @@ func (c *cap) PresolveProp(model scip.Model, _ scip.PropagatorPlugin) scip.Preso
 	if tx, ok := c.x.Transformed(); ok {
 		x = tx
 	}
-	_, tightened, err := model.TryTightenVarUb(x, 2)
+	infeasible, tightened, err := model.TryTightenVarUb(x, 2)
 	if err != nil {
 		panic(err)
+	}
+	if infeasible {
+		return scip.PresolResult{Status: scip.PresolStatusCutoff}
 	}
 	if !tightened {
 		return scip.PresolResult{Status: scip.PresolStatusDidNotFind}

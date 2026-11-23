@@ -97,9 +97,12 @@ func (c *capPresol) PresolveProp(model Model, prop PropagatorPlugin) PresolResul
 	if tv, ok := c.v.Transformed(); ok {
 		v = tv
 	}
-	_, tightened, err := model.TryTightenVarUb(v, c.ub)
+	infeas, tightened, err := model.TryTightenVarUb(v, c.ub)
 	if err != nil {
 		panic(err)
+	}
+	if infeas {
+		return PresolResult{Status: PresolStatusCutoff}
 	}
 	if tightened {
 		return PresolResult{Status: PresolStatusSuccess, NChgBds: 1}
@@ -141,6 +144,20 @@ func TestPropagatorPresolTightensBound(t *testing.T) {
 	}
 	if hook.plugin.NCalls() != 0 {
 		t.Fatalf("propagation ran %d times with freq -1", hook.plugin.NCalls())
+	}
+}
+
+func TestPropagatorPresolCutsOffInfeasibleBound(t *testing.T) {
+	model := DefaultModel().HideOutput().SetHeuristics(ParamSettingOff).Maximize()
+	defer model.Free()
+	x := model.AddVar(0, 10, 1, "x", VarTypeInteger)
+	model.AddCons([]Variable{x}, []float64{1}, NegInfinity, 100, "c")
+	model.Add(NewPropagator(&capPresol{v: x, ub: -1}).
+		Name("presolcut").
+		Freq(-1).
+		PresolPriority(10000000))
+	if model.Solve().Status() != StatusInfeasible {
+		t.Fatalf("got %v, want Infeasible", model.Status())
 	}
 }
 
