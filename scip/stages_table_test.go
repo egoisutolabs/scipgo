@@ -43,6 +43,8 @@ var scipStageTable = map[string][]Stage{
 	"SCIPinDive":           {StageTransforming, StageTransformed, StageInitPresolve, StagePresolving, StageExitPresolve, StagePresolved, StageInitSolve, StageSolving, StageSolved, StageExitSolve, StageFreeTrans},
 	"SCIPinProbing":        {StageTransformed, StageInitPresolve, StagePresolving, StageExitPresolve, StagePresolved, StageInitSolve, StageSolving, StageSolved, StageExitSolve},
 	"SCIPisLPConstructed":  {StageSolving},
+	"SCIPtightenVarLb":     {StageProblem, StageTransformed, StagePresolving, StageSolving},
+	"SCIPtightenVarUb":     {StageProblem, StageTransformed, StagePresolving, StageSolving},
 }
 
 // setsUnderTest maps each named set to the functions its comment cites.
@@ -59,6 +61,7 @@ var setsUnderTest = map[string]struct {
 	"stagesSolving":       {stagesSolving, []string{"SCIPgetBestNode", "SCIPgetLPObjval", "SCIPgetLPSolstat", "SCIPisLPConstructed", "SCIPhasCurrentNodeLP", "SCIPgetVarRedcost", "SCIPgetVarObjProbing"}},
 	"stagesSolvingSolved": {stagesSolvingSolved, []string{"SCIPgetChildren", "SCIPgetNChildren", "SCIPgetLeaves", "SCIPgetSiblings", "SCIPgetColRedcost"}},
 	"stagesSolvingTime":   {stagesSolvingTime, []string{"SCIPgetSolvingTime"}},
+	"stagesTightenVar":    {stagesTightenVar, []string{"SCIPtightenVarLb", "SCIPtightenVarUb"}},
 	"stagesTrans":         {stagesTrans, []string{"SCIPgetNVars", "SCIPgetVars", "SCIPgetNSols", "SCIPgetSols"}},
 	"stagesTransformed":   {stagesTransformed, []string{"SCIPinProbing", "SCIPgetPrimalbound", "SCIPgetDualbound"}},
 	"stagesVarSol":        {stagesVarSol, []string{"SCIPgetVarSol"}},

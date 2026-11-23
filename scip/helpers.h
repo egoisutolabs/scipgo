@@ -16,6 +16,7 @@ uintptr_t scipgo_pricerId(SCIP_PRICER* pricer);
 uintptr_t scipgo_heurId(SCIP_HEUR* heur);
 uintptr_t scipgo_sepaId(SCIP_SEPA* sepa);
 uintptr_t scipgo_conshdlrId(SCIP_CONSHDLR* conshdlr);
+uintptr_t scipgo_propId(SCIP_PROP* prop);
 
 /* hascopy: register a copy callback so the plugin is re-included into sub-SCIPs
    (LNS heuristics, concurrent solve workers). */
@@ -37,6 +38,13 @@ SCIP_RETCODE scipgo_includeHeur(SCIP* scip, const char* name, const char* desc, 
 
 SCIP_RETCODE scipgo_includeSepa(SCIP* scip, const char* name, const char* desc, int priority,
     int freq, SCIP_Real maxbounddist, int usesubscip, int delay, int hascopy, uintptr_t data);
+
+/* haspresol: register PROPPRESOL. hascopy: register PROPCOPY. presolmaxrounds
+   is remembered on the Go side; SCIP exposes no getter for it. */
+SCIP_RETCODE scipgo_includeProp(SCIP* scip, const char* name, const char* desc,
+    int priority, int freq, int delay, unsigned int timing,
+    int presolpriority, int presolmaxrounds, unsigned int presoltiming,
+    int haspresol, int hascopy, uintptr_t data);
 
 SCIP_RETCODE scipgo_includeConshdlr(SCIP* scip, const char* name, const char* desc,
     int enfopriority, int checkpriority, int hascopy, int hasenfops,

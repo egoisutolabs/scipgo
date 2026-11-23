@@ -1625,6 +1625,23 @@ func (s *Scip) includeHeur(name, desc string, priority int32, dispchar byte, fre
 		C.uint(timing), cInt(usessubscip), cInt(isCopyable(heur)), C.uintptr_t(data)))
 }
 
+func (s *Scip) includePropagator(name, desc string, priority, freq int32, delay bool, timing PropTiming, presolPriority, presolMaxRounds int32, presolTiming PresolTiming, prop Propagator) error {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	cn, cd := cString(name), cString(desc)
+	defer func() { freeCString(cn); freeCString(cd) }()
+	data := plugins.put(prop, s.raw)
+	rememberPropPresolMaxRounds(data, presolMaxRounds)
+	_, hasPresol := prop.(PropagatorPresol)
+	err := includeResult(data, C.scipgo_includeProp(s.raw, cn, cd,
+		C.int(priority), C.int(freq), cInt(delay), C.uint(timing),
+		C.int(presolPriority), C.int(presolMaxRounds), C.uint(presolTiming),
+		cInt(hasPresol), cInt(isCopyable(prop)), C.uintptr_t(data)))
+	if err != nil {
+		forgetPropPresolMaxRounds(data)
+	}
+	return err
+}
+
 func (s *Scip) includeSeparator(name, desc string, priority, freq int32, maxbounddist float64, usesubscip, delay bool, sep Separator) error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	cn, cd := cString(name), cString(desc)

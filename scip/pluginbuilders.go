@@ -265,6 +265,90 @@ func (b NodeselBuilder) TryAddTo(m Model) error {
 	return m.TryIncludeNodesel(strOrEmpty(b.name), strOrEmpty(b.desc), b.stdPriority, b.memSavePriority, b.nodesel)
 }
 
+// PropagatorBuilder is a builder for domain propagators.
+type PropagatorBuilder struct {
+	name            *string
+	desc            *string
+	priority        int32
+	freq            int32
+	delay           bool
+	timing          *PropTiming
+	presolPriority  int32
+	presolMaxRounds int32
+	presolTiming    *PresolTiming
+	prop            Propagator
+}
+
+// NewPropagator creates a PropagatorBuilder wrapping the given propagator.
+//
+// Defaults: empty name/desc, priority 100000, freq 1 (every depth), delay
+// false, timing PropTimingBeforeLp. The presolve hook, registered only when
+// the propagator implements PropagatorPresol, defaults to priority 100000,
+// unlimited rounds (-1) and PresolTimingAlways.
+func NewPropagator(p Propagator) PropagatorBuilder {
+	return PropagatorBuilder{priority: 100000, freq: 1, presolPriority: 100000, presolMaxRounds: -1, prop: p}
+}
+
+// Name sets the name of the propagator.
+func (b PropagatorBuilder) Name(name string) PropagatorBuilder { b.name = &name; return b }
+
+// Desc sets the description of the propagator.
+func (b PropagatorBuilder) Desc(desc string) PropagatorBuilder { b.desc = &desc; return b }
+
+// Priority sets the propagation priority. Non-negative values run before
+// constraint handlers, negative values after them.
+func (b PropagatorBuilder) Priority(p int32) PropagatorBuilder { b.priority = p; return b }
+
+// Freq sets the depth frequency: 1 at every node, 0 at the root only, -1 off.
+func (b PropagatorBuilder) Freq(f int32) PropagatorBuilder { b.freq = f; return b }
+
+// Delay sets whether the propagator waits for a round in which no other
+// propagator found a reduction.
+func (b PropagatorBuilder) Delay(v bool) PropagatorBuilder { b.delay = v; return b }
+
+// Timing sets the mask of node-loop points where the propagator runs.
+func (b PropagatorBuilder) Timing(t PropTiming) PropagatorBuilder { b.timing = &t; return b }
+
+// PresolPriority sets the priority of the presolve hook. It has no effect
+// unless the propagator implements PropagatorPresol.
+func (b PropagatorBuilder) PresolPriority(p int32) PropagatorBuilder {
+	b.presolPriority = p
+	return b
+}
+
+// PresolMaxRounds sets how many presolving rounds the hook joins; -1 means
+// no limit. SCIP keeps this limit internally and does not expose a getter,
+// so PropagatorPlugin cannot report it back. It has no effect unless the
+// propagator implements PropagatorPresol.
+func (b PropagatorBuilder) PresolMaxRounds(n int32) PropagatorBuilder {
+	b.presolMaxRounds = n
+	return b
+}
+
+// PresolTiming sets the timing mask of the presolve hook. It has no effect
+// unless the propagator implements PropagatorPresol.
+func (b PropagatorBuilder) PresolTiming(t PresolTiming) PropagatorBuilder {
+	b.presolTiming = &t
+	return b
+}
+
+// AddTo includes the propagator in a model in the Init or Problem stage.
+func (b PropagatorBuilder) AddTo(m Model) { must(b.TryAddTo(m)) }
+
+// TryAddTo includes the propagator, returning an error on failure.
+func (b PropagatorBuilder) TryAddTo(m Model) error {
+	timing := PropTimingBeforeLp
+	if b.timing != nil {
+		timing = *b.timing
+	}
+	presolTiming := PresolTimingAlways
+	if b.presolTiming != nil {
+		presolTiming = *b.presolTiming
+	}
+	return m.TryIncludePropagator(strOrEmpty(b.name), strOrEmpty(b.desc), b.priority, b.freq,
+		b.delay, timing, b.presolPriority, b.presolMaxRounds, presolTiming, b.prop)
+}
+
 func strOrEmpty(s *string) string {
 	if s == nil {
 		return ""

@@ -34,9 +34,10 @@ fmt.Println(solved.Status(), sol.ObjVal(), sol.Val(x), sol.Val(y))
   constraints; expression trees and SCIP's own expression syntax; reading
   and writing LP, MPS and the other formats SCIP knows.
 - **Plugins in Go.** Branching rules, primal heuristics, separators,
-  pricers, constraint handlers, event handlers and node selectors are Go
-  interfaces, registered with a builder. Panics in callbacks are captured
-  and re-raised from `Solve` instead of crashing the process.
+  pricers, propagators, constraint handlers, event handlers and node
+  selectors are Go interfaces, registered with a builder. Panics in
+  callbacks are captured and re-raised from `Solve` instead of crashing
+  the process.
 - **Safe by construction.** Methods that can fail against SCIP come in a
   panicking and an error-returning form, so you choose per call site.
   Every query checks the solver stage and the
@@ -86,12 +87,12 @@ documents every method.
 | [Logging](docs/logging.md) | Routing SCIP's log and error output |
 | [Errors](docs/errors.md) | `Try` and panicking forms, error types, liveness |
 | [Model lifecycle](docs/lifecycle.md) | Stages, handles, memory, goroutines |
-| [Plugins](docs/plugins/README.md) | Writing branch rules, heuristics, separators, pricers, constraint handlers, event handlers and node selectors |
+| [Plugins](docs/plugins/README.md) | Writing branch rules, heuristics, separators, pricers, propagators, constraint handlers, event handlers and node selectors |
 | [Coming from russcip](docs/russcip.md) | The mapping between the Rust API and this one |
 
 ## Examples
 
-Eleven complete programs live under [`examples/`](examples/README.md),
+Twelve complete programs live under [`examples/`](examples/README.md),
 each solving a real problem and checking its answer: a first MIP, a
 knapsack, custom branching, node selection, event handling, a rounding
 heuristic, a clique separator, TSP with subtour elimination, cutting stock

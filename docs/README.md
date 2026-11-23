@@ -43,6 +43,7 @@ pieces fit together.
 - [Heuristics](plugins/heuristics.md)
 - [Node selectors](plugins/node-selectors.md)
 - [Pricers](plugins/pricers.md)
+- [Propagators](plugins/propagators.md)
 - [Separators](plugins/separators.md)
 - [Tree and LP access](tree-and-lp.md): nodes, rows, columns and LP
   values from inside a callback.
@@ -51,7 +52,7 @@ pieces fit together.
 
 ## Reference
 
-- [Examples](../examples/README.md): eleven complete programs, from a
+- [Examples](../examples/README.md): twelve complete programs, from a
   first MIP to branch-and-price.
 - [Changelog](../CHANGELOG.md)
 - [Contributing](../CONTRIBUTING.md)

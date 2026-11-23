@@ -15,6 +15,12 @@ uses [Semantic Versioning](https://semver.org/).
   `CheckPriority` on the wrapper; `Eventhdlrs` and `FindEventhdlr`; and a
   read-only `PropagatorPlugin` (`Priority`, `Freq`, `Timing`, call
   statistics) via `Propagators` and `FindPropagator`.
+- Propagators written in Go, on that same `PropagatorPlugin`: the
+  `Propagator` interface, the optional `PropagatorPresol` hook,
+  `NewPropagator` and `IncludePropagator`, and `TightenVarLb` /
+  `TightenVarUb` for the bound changes a propagator applies.
+  `PropResultDelayNode` reports a postponed node. Go presolver plugins are
+  not part of this change.
 - `Row.Release` and `TryRelease` for promptly releasing a binding-created
   row that will not be added.
 - Char parameters: `SetCharParam`, `TrySetCharParam`, `CharParam` and

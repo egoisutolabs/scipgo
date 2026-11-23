@@ -68,7 +68,9 @@ thread pool is a process-wide global that each instance creates and
 destroys. Several models may still use `SolveConcurrent` over the process
 lifetime.
 
-**Things scipgo adds** that have no russcip counterpart: `Interrupt`,
+**Things scipgo adds** that have no russcip counterpart: Go propagators
+(`Propagator`, `NewPropagator`) and `TightenVarLb` / `TightenVarUb`;
+`Interrupt`,
 `SolveContext` and `SolveConcurrentContext`; per-model log routing with
 `SetLogFunc`, `SetLogWriter` and `SetLogger`; exact solving with
 `EnableExactSolving`, `ValExact` and `ObjValExact`; the query guards

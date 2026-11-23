@@ -581,6 +581,71 @@ func (m Model) TrySetLbNode(node *Node, v Variable, lb float64) error {
 // panics on failure.
 func (m Model) SetLbNode(node *Node, v Variable, lb float64) { must(m.TrySetLbNode(node, v, lb)) }
 
+// TryTightenVarLb tightens the lower bound of v when bound is tighter than
+// the current one, within SCIP's bound-strengthening tolerance. infeasible
+// reports that the new domain is empty; tightened reports that the bound
+// moved. A change smaller than the tolerance is ignored and tightened is
+// false. There is no force flag: tightenings below the tolerance are not
+// applied.
+//
+// In the Problem stage the original bound changes. In Transformed,
+// Presolving and Solving the change is on the current node, which at the
+// root (and during presolving) is global. The call is rejected while SCIP
+// is diving; use Diver.ChgVarLb there. The bound change is not recorded as
+// an inference, so conflict analysis treats it like a branching decision.
+// A multi-aggregated variable is rejected by SCIP.
+func (m Model) TryTightenVarLb(v Variable, bound float64) (infeasible, tightened bool, err error) {
+	return m.tightenVar("TightenVarLb", v, bound, true)
+}
+
+// TightenVarLb tightens the lower bound of v; see TryTightenVarLb. It panics
+// on failure.
+func (m Model) TightenVarLb(v Variable, bound float64) (infeasible, tightened bool) {
+	infeasible, tightened, err := m.TryTightenVarLb(v, bound)
+	must(err)
+	return infeasible, tightened
+}
+
+// TryTightenVarUb tightens the upper bound of v; see TryTightenVarLb. Use
+// Diver.ChgVarUb while diving.
+func (m Model) TryTightenVarUb(v Variable, bound float64) (infeasible, tightened bool, err error) {
+	return m.tightenVar("TightenVarUb", v, bound, false)
+}
+
+// TightenVarUb tightens the upper bound of v; see TryTightenVarUb. It panics
+// on failure.
+func (m Model) TightenVarUb(v Variable, bound float64) (infeasible, tightened bool) {
+	infeasible, tightened, err := m.TryTightenVarUb(v, bound)
+	must(err)
+	return infeasible, tightened
+}
+
+func (m Model) tightenVar(op string, v Variable, bound float64, lower bool) (bool, bool, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.query(op, stagesTightenVar); err != nil {
+		return false, false, err
+	}
+	// SCIPtightenVarLb/Ub assert that SCIP is not diving outside Problem.
+	// Problem is not a diving stage, so the check is the other three.
+	if stagesInDive.has(m.scip.stage()) && C.SCIPinDive(m.scip.raw) != 0 {
+		return false, false, m.invalid(op, RetcodeInvalidCall, "SCIP is in diving mode")
+	}
+	if err := m.checkVars(op, v); err != nil {
+		return false, false, err
+	}
+	var infeasible, tightened C.uint
+	var rc C.SCIP_RETCODE
+	if lower {
+		rc = C.SCIPtightenVarLb(m.scip.raw, v.raw, C.double(bound), 0, &infeasible, &tightened)
+	} else {
+		rc = C.SCIPtightenVarUb(m.scip.raw, v.raw, C.double(bound), 0, &infeasible, &tightened)
+	}
+	if err := m.call(op, rc); err != nil {
+		return false, false, err
+	}
+	return infeasible != 0, tightened != 0, nil
+}
+
 func scipSols(s *Scip) []Solution {
 	raw := s.getSols()
 	out := make([]Solution, 0, len(raw))

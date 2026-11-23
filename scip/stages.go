@@ -67,6 +67,13 @@ var (
 	// dive getters.
 	stagesSolving = stages(StageSolving)
 
+	// stagesTightenVar: scip_var.c SCIPtightenVarLb/SCIPtightenVarUb.
+	// Problem, Transformed, Presolving and Solving. The header @pre list
+	// omits Transformed; the SCIPcheckStage call permits it. Diving is
+	// rejected by the callers: those functions assert that SCIP is not
+	// diving outside the Problem stage.
+	stagesTightenVar = stages(StageProblem, StageTransformed, StagePresolving, StageSolving)
+
 	// stagesVarSol: scip_var.c SCIPgetVarSol; the solution-value getter takes
 	// the same set when given a NULL solution (the current LP/pseudo solution).
 	stagesVarSol = stages(StagePresolved, StageSolving)
