@@ -17,6 +17,10 @@ uses [Semantic Versioning](https://semver.org/).
   statistics) via `Propagators` and `FindPropagator`.
 - `Row.Release` and `TryRelease` for promptly releasing a binding-created
   row that will not be added.
+- Char parameters: `SetCharParam`, `TrySetCharParam`, `CharParam` and
+  `TryCharParam`. `SetParam` accepts a `byte`, or an ASCII rune when the
+  parameter is a char, and `GetParam` accepts a `*byte`. A rune that does
+  not fit in one ASCII byte is `RetcodeInvalidData`.
 
 ### Fixed
 

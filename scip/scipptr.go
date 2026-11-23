@@ -336,6 +336,38 @@ func (s *Scip) realParam(param string) (float64, error) {
 	return float64(value), nil
 }
 
+func (s *Scip) setCharParam(param string, value byte) error {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	cp := cString(param)
+	defer freeCString(cp)
+	return retcodeError(C.SCIPsetCharParam(s.raw, cp, C.char(value)))
+}
+
+func (s *Scip) charParam(param string) (byte, error) {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	cp := cString(param)
+	defer freeCString(cp)
+	var value C.char
+	if err := retcodeError(C.SCIPgetCharParam(s.raw, cp, &value)); err != nil {
+		return 0, err
+	}
+	return byte(value), nil
+}
+
+// isCharParam reports whether name is a SCIP char parameter. An unknown
+// name is false; the caller reports that through the setter it would have
+// used. The caller must have checked that the instance is alive.
+func (s *Scip) isCharParam(name string) bool {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	cp := cString(name)
+	defer freeCString(cp)
+	p := C.SCIPgetParam(s.raw, cp)
+	if p == nil {
+		return false
+	}
+	return C.SCIPparamGetType(p) == C.SCIP_PARAMTYPE_CHAR
+}
+
 func (s *Scip) setPresolving(setting ParamSetting) error {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	return retcodeError(C.SCIPsetPresolving(s.raw, setting.toC(), 1))

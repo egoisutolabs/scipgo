@@ -1030,6 +1030,23 @@ func (m Model) SetRealParam(param string, value float64) (Model, error) {
 	return m, m.wrap("SetRealParam", m.scip.setRealParam(param, value), param)
 }
 
+// TrySetCharParam sets a SCIP char parameter. value is a single byte;
+// a character constant such as 'd' is accepted when it fits in a byte.
+func (m Model) TrySetCharParam(param string, value byte) (Model, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.guard("SetCharParam"); err != nil {
+		return m, err
+	}
+	return m, m.wrap("SetCharParam", m.scip.setCharParam(param, value), param)
+}
+
+// SetCharParam sets a SCIP char parameter. It returns the error, as the
+// other Set*Param methods do, because an unknown name or a rejected value
+// is a normal outcome. TrySetCharParam is the same call.
+func (m Model) SetCharParam(param string, value byte) (Model, error) {
+	return m.TrySetCharParam(param, value)
+}
+
 // TryStrParam returns the value of a SCIP string parameter.
 func (m Model) TryStrParam(param string) (string, error) {
 	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
@@ -1112,6 +1129,23 @@ func (m Model) TryRealParam(param string) (float64, error) {
 // RealParam returns the value of a SCIP real parameter. It panics on failure.
 func (m Model) RealParam(param string) float64 {
 	v, err := m.TryRealParam(param)
+	must(err)
+	return v
+}
+
+// TryCharParam returns the value of a SCIP char parameter.
+func (m Model) TryCharParam(param string) (byte, error) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.guard("CharParam"); err != nil {
+		return 0, err
+	}
+	v, err := m.scip.charParam(param)
+	return v, m.wrap("CharParam", err, param)
+}
+
+// CharParam returns the value of a SCIP char parameter. It panics on failure.
+func (m Model) CharParam(param string) byte {
+	v, err := m.TryCharParam(param)
 	must(err)
 	return v
 }
