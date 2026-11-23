@@ -8,6 +8,13 @@ uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Plugin listing and lookup for the remaining kinds: `BranchRules` and
+  `FindBranchRule` with `SetBranchRulePriority`; `Nodesels` with
+  `SetNodeselStdPriority` and `SetNodeselMemSavePriority`; `Pricers` and
+  `FindPricer`; `Conshdlrs` and `FindConshdlr`, with `EnfoPriority` and
+  `CheckPriority` on the wrapper; `Eventhdlrs` and `FindEventhdlr`; and a
+  read-only `PropagatorPlugin` (`Priority`, `Freq`, `Timing`, call
+  statistics) via `Propagators` and `FindPropagator`.
 - `Row.Release` and `TryRelease` for promptly releasing a binding-created
   row that will not be added.
 

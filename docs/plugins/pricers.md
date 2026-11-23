@@ -36,6 +36,10 @@ type PricerResult struct {
 before pricing converges: a Lagrangian bound from the pricing subproblem
 is the usual source.
 
+`Pricers` lists the pricers included in the model and `FindPricer` fetches
+one by the name it was registered under. SCIP ships none of its own, so
+the list is empty until you add one.
+
 ## Registration
 
 ```go

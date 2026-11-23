@@ -52,6 +52,10 @@ model.Add(scip.NewBranchRule(rule).
 relative distance of the best node's. The defaults make the rule run at
 every node, ahead of SCIP's own rules.
 
+`BranchRules` lists every rule in the model, including SCIP's.
+`FindBranchRule("relpscost")` returns the default rule, and
+`SetBranchRulePriority` changes a rule's priority after it is included.
+
 ## Example: most infeasible branching
 
 Pick the candidate whose fractional part is closest to one half:

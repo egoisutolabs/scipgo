@@ -452,6 +452,41 @@ func (s *Scip) findNodesel(name string) *C.SCIP_NODESEL {
 	return C.SCIPfindNodesel(s.raw, cn)
 }
 
+func (s *Scip) findBranchrule(name string) *C.SCIP_BRANCHRULE {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	cn := cString(name)
+	defer freeCString(cn)
+	return C.SCIPfindBranchrule(s.raw, cn)
+}
+
+func (s *Scip) findPricer(name string) *C.SCIP_PRICER {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	cn := cString(name)
+	defer freeCString(cn)
+	return C.SCIPfindPricer(s.raw, cn)
+}
+
+func (s *Scip) findConshdlr(name string) *C.SCIP_CONSHDLR {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	cn := cString(name)
+	defer freeCString(cn)
+	return C.SCIPfindConshdlr(s.raw, cn)
+}
+
+func (s *Scip) findEventhdlr(name string) *C.SCIP_EVENTHDLR {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	cn := cString(name)
+	defer freeCString(cn)
+	return C.SCIPfindEventhdlr(s.raw, cn)
+}
+
+func (s *Scip) findProp(name string) *C.SCIP_PROP {
+	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	cn := cString(name)
+	defer freeCString(cn)
+	return C.SCIPfindProp(s.raw, cn)
+}
+
 func (s *Scip) getTransformedCons(c Constraint) (*C.SCIP_CONS, error) {
 	defer runtime.KeepAlive(s.root()) // pin the strong instance, not a weak wrapper, until the C call returns
 	var transformed *C.SCIP_CONS

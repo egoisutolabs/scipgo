@@ -190,6 +190,16 @@ built-in one, while a custom separator at 100000 runs after `closecuts`;
 raise its priority if it must go first. A constraint handler's two
 priorities are explained on its page.
 
+Built-in plugins can be listed and looked up the same way, including the
+kinds this table does not let you write. `BranchRules`, `Nodesels`,
+`Pricers`, `Conshdlrs` and `Eventhdlrs` list what the model has, and
+`FindBranchRule("relpscost")`, `FindNodesel("bfs")`, `FindConshdlr("linear")`
+and `FindEventhdlr` fetch one by name. `Propagators` and `FindPropagator`
+do the same for SCIP's propagators: the wrapper is read-only and reports
+priority, frequency, timing and call statistics. Priorities that can be
+changed after inclusion are described under
+[Tuning individual plugins](../parameters.md#tuning-individual-plugins).
+
 ## Performance
 
 Each callback is a cgo crossing plus whatever the callback does. The

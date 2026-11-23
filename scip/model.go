@@ -491,6 +491,18 @@ func (m Model) FindPresolver(name string) (PresolverPlugin, bool) {
 	return PresolverPlugin{raw: raw, scip: m.scip}, true
 }
 
+// Nodesels returns all node selectors included in the model.
+func (m Model) Nodesels() []NodeselPlugin {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Nodesels"))
+	n := int(C.SCIPgetNNodesels(m.scip.raw))
+	out := make([]NodeselPlugin, 0, n)
+	for _, raw := range cSlice(C.SCIPgetNodesels(m.scip.raw), n) {
+		out = append(out, NodeselPlugin{raw: raw, scip: m.scip})
+	}
+	return out
+}
+
 // FindNodesel finds an included node selector by its name (e.g. "bfs"),
 // giving access to its priorities and statistics.
 func (m Model) FindNodesel(name string) (NodeselPlugin, bool) {
@@ -501,6 +513,121 @@ func (m Model) FindNodesel(name string) (NodeselPlugin, bool) {
 		return NodeselPlugin{}, false
 	}
 	return NodeselPlugin{raw: raw, scip: m.scip}, true
+}
+
+// BranchRules returns all branching rules included in the model.
+func (m Model) BranchRules() []BranchRulePlugin {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("BranchRules"))
+	n := int(C.SCIPgetNBranchrules(m.scip.raw))
+	out := make([]BranchRulePlugin, 0, n)
+	for _, raw := range cSlice(C.SCIPgetBranchrules(m.scip.raw), n) {
+		out = append(out, BranchRulePlugin{raw: raw, scip: m.scip})
+	}
+	return out
+}
+
+// FindBranchRule finds a branching rule by its name (e.g. "relpscost").
+func (m Model) FindBranchRule(name string) (BranchRulePlugin, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("FindBranchRule"))
+	raw := m.scip.findBranchrule(name)
+	if raw == nil {
+		return BranchRulePlugin{}, false
+	}
+	return BranchRulePlugin{raw: raw, scip: m.scip}, true
+}
+
+// Pricers returns all variable pricers included in the model.
+func (m Model) Pricers() []PricerPlugin {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Pricers"))
+	n := int(C.SCIPgetNPricers(m.scip.raw))
+	out := make([]PricerPlugin, 0, n)
+	for _, raw := range cSlice(C.SCIPgetPricers(m.scip.raw), n) {
+		out = append(out, PricerPlugin{raw: raw, scip: m.scip})
+	}
+	return out
+}
+
+// FindPricer finds a variable pricer by its name.
+func (m Model) FindPricer(name string) (PricerPlugin, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("FindPricer"))
+	raw := m.scip.findPricer(name)
+	if raw == nil {
+		return PricerPlugin{}, false
+	}
+	return PricerPlugin{raw: raw, scip: m.scip}, true
+}
+
+// Conshdlrs returns all constraint handlers included in the model.
+func (m Model) Conshdlrs() []ConshdlrPlugin {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Conshdlrs"))
+	n := int(C.SCIPgetNConshdlrs(m.scip.raw))
+	out := make([]ConshdlrPlugin, 0, n)
+	for _, raw := range cSlice(C.SCIPgetConshdlrs(m.scip.raw), n) {
+		out = append(out, ConshdlrPlugin{raw: raw, scip: m.scip})
+	}
+	return out
+}
+
+// FindConshdlr finds a constraint handler by its name (e.g. "linear").
+func (m Model) FindConshdlr(name string) (ConshdlrPlugin, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("FindConshdlr"))
+	raw := m.scip.findConshdlr(name)
+	if raw == nil {
+		return ConshdlrPlugin{}, false
+	}
+	return ConshdlrPlugin{raw: raw, scip: m.scip}, true
+}
+
+// Eventhdlrs returns all event handlers included in the model.
+func (m Model) Eventhdlrs() []EventhdlrPlugin {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Eventhdlrs"))
+	n := int(C.SCIPgetNEventhdlrs(m.scip.raw))
+	out := make([]EventhdlrPlugin, 0, n)
+	for _, raw := range cSlice(C.SCIPgetEventhdlrs(m.scip.raw), n) {
+		out = append(out, EventhdlrPlugin{raw: raw, scip: m.scip})
+	}
+	return out
+}
+
+// FindEventhdlr finds an event handler by its name (e.g. "softtimelimit").
+func (m Model) FindEventhdlr(name string) (EventhdlrPlugin, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("FindEventhdlr"))
+	raw := m.scip.findEventhdlr(name)
+	if raw == nil {
+		return EventhdlrPlugin{}, false
+	}
+	return EventhdlrPlugin{raw: raw, scip: m.scip}, true
+}
+
+// Propagators returns all propagators included in the model.
+func (m Model) Propagators() []PropagatorPlugin {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("Propagators"))
+	n := int(C.SCIPgetNProps(m.scip.raw))
+	out := make([]PropagatorPlugin, 0, n)
+	for _, raw := range cSlice(C.SCIPgetProps(m.scip.raw), n) {
+		out = append(out, PropagatorPlugin{raw: raw, scip: m.scip})
+	}
+	return out
+}
+
+// FindPropagator finds a propagator by its name (e.g. "probing").
+func (m Model) FindPropagator(name string) (PropagatorPlugin, bool) {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	must(m.guard("FindPropagator"))
+	raw := m.scip.findProp(name)
+	if raw == nil {
+		return PropagatorPlugin{}, false
+	}
+	return PropagatorPlugin{raw: raw, scip: m.scip}, true
 }
 
 // TrySetHeuristicPriority sets the priority of a primal heuristic.
@@ -552,6 +679,57 @@ func (m Model) TrySetPresolverPriority(p PresolverPlugin, priority int32) error 
 // SetPresolverPriority sets the priority of a presolver. It panics on failure.
 func (m Model) SetPresolverPriority(p PresolverPlugin, priority int32) {
 	must(m.TrySetPresolverPriority(p, priority))
+}
+
+// TrySetBranchRulePriority sets the priority of a branching rule.
+func (m Model) TrySetBranchRulePriority(b BranchRulePlugin, priority int32) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.guard("SetBranchRulePriority"); err != nil {
+		return err
+	}
+	if err := m.checkHandle("SetBranchRulePriority", "BranchRulePlugin", b.raw != nil, b.scip, genNone, true); err != nil {
+		return err
+	}
+	return m.call("SetBranchRulePriority", C.SCIPsetBranchrulePriority(m.scip.raw, b.raw, C.int(priority)))
+}
+
+// SetBranchRulePriority sets the priority of a branching rule. It panics on failure.
+func (m Model) SetBranchRulePriority(b BranchRulePlugin, priority int32) {
+	must(m.TrySetBranchRulePriority(b, priority))
+}
+
+// TrySetNodeselStdPriority sets the standard priority of a node selector.
+func (m Model) TrySetNodeselStdPriority(n NodeselPlugin, priority int32) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.guard("SetNodeselStdPriority"); err != nil {
+		return err
+	}
+	if err := m.checkHandle("SetNodeselStdPriority", "NodeselPlugin", n.raw != nil, n.scip, genNone, true); err != nil {
+		return err
+	}
+	return m.call("SetNodeselStdPriority", C.SCIPsetNodeselStdPriority(m.scip.raw, n.raw, C.int(priority)))
+}
+
+// SetNodeselStdPriority sets the standard priority of a node selector. It panics on failure.
+func (m Model) SetNodeselStdPriority(n NodeselPlugin, priority int32) {
+	must(m.TrySetNodeselStdPriority(n, priority))
+}
+
+// TrySetNodeselMemSavePriority sets the memory-saving priority of a node selector.
+func (m Model) TrySetNodeselMemSavePriority(n NodeselPlugin, priority int32) error {
+	defer runtime.KeepAlive(m.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	if err := m.guard("SetNodeselMemSavePriority"); err != nil {
+		return err
+	}
+	if err := m.checkHandle("SetNodeselMemSavePriority", "NodeselPlugin", n.raw != nil, n.scip, genNone, true); err != nil {
+		return err
+	}
+	return m.call("SetNodeselMemSavePriority", C.SCIPsetNodeselMemsavePriority(m.scip.raw, n.raw, C.int(priority)))
+}
+
+// SetNodeselMemSavePriority sets the memory-saving priority of a node selector. It panics on failure.
+func (m Model) SetNodeselMemSavePriority(n NodeselPlugin, priority int32) {
+	must(m.TrySetNodeselMemSavePriority(n, priority))
 }
 
 // TryIncludeBranchRule includes a new branch rule in the model.

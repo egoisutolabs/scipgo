@@ -35,6 +35,10 @@ the highest memory-save priority when memory runs low. The default of one
 million exceeds every built-in selector, so a registered custom selector
 is the active one without further configuration.
 
+`Nodesels` lists every selector. `FindNodesel("bfs")` returns SCIP's
+best-first selector, and `SetNodeselStdPriority` and
+`SetNodeselMemSavePriority` change its two priorities.
+
 ## Choosing a node
 
 The model exposes the open nodes relative to the focus node:

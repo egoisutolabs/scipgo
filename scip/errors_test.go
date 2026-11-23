@@ -264,14 +264,17 @@ func TestZeroHandlesRejected(t *testing.T) {
 	x := m.Vars()[0]
 	c := m.Conss()[0]
 	cases := map[string]error{
-		"SetHeuristicPriority": m.TrySetHeuristicPriority(HeuristicPlugin{}, 1),
-		"SetSeparatorPriority": m.TrySetSeparatorPriority(SeparatorPlugin{}, 1),
-		"AddConsCoef cons":     m.TryAddConsCoef(Constraint{}, x, 1),
-		"AddConsCoef var":      m.TryAddConsCoef(c, Variable{}, 1),
-		"AddConsCoefSetppc":    m.TryAddConsCoefSetppc(c, Variable{}),
-		"SetConsModifiable":    m.TrySetConsModifiable(Constraint{}, true),
-		"AddCut":               func() error { _, e := m.TryAddCut(Row{}, false); return e }(),
-		"SetUbNode var":        m.TrySetUbNode(&Node{}, Variable{}, 0),
+		"SetHeuristicPriority":      m.TrySetHeuristicPriority(HeuristicPlugin{}, 1),
+		"SetSeparatorPriority":      m.TrySetSeparatorPriority(SeparatorPlugin{}, 1),
+		"SetBranchRulePriority":     m.TrySetBranchRulePriority(BranchRulePlugin{}, 1),
+		"SetNodeselStdPriority":     m.TrySetNodeselStdPriority(NodeselPlugin{}, 1),
+		"SetNodeselMemSavePriority": m.TrySetNodeselMemSavePriority(NodeselPlugin{}, 1),
+		"AddConsCoef cons":          m.TryAddConsCoef(Constraint{}, x, 1),
+		"AddConsCoef var":           m.TryAddConsCoef(c, Variable{}, 1),
+		"AddConsCoefSetppc":         m.TryAddConsCoefSetppc(c, Variable{}),
+		"SetConsModifiable":         m.TrySetConsModifiable(Constraint{}, true),
+		"AddCut":                    func() error { _, e := m.TryAddCut(Row{}, false); return e }(),
+		"SetUbNode var":             m.TrySetUbNode(&Node{}, Variable{}, 0),
 	}
 	for name, err := range cases {
 		if !errors.Is(err, RetcodeInvalidData) {
@@ -459,6 +462,17 @@ func TestPluginWrappersCheckOwnershipEverywhere(t *testing.T) {
 	pA, _ := a.FindPresolver("trivial")
 	if err := b.TrySetPresolverPriority(pA, 1); !errors.Is(err, RetcodeInvalidData) {
 		t.Fatalf("presol foreign: %v", err)
+	}
+	ruleA, _ := a.FindBranchRule("relpscost")
+	if err := b.TrySetBranchRulePriority(ruleA, 1); asError(t, err).Detail != "BranchRulePlugin belongs to another model" {
+		t.Fatalf("branch priority foreign: %v", err)
+	}
+	nsA, _ := a.FindNodesel("bfs")
+	if err := b.TrySetNodeselStdPriority(nsA, 1); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("nodesel std foreign: %v", err)
+	}
+	if err := b.TrySetNodeselMemSavePriority(nsA, 1); !errors.Is(err, RetcodeInvalidData) {
+		t.Fatalf("nodesel mem foreign: %v", err)
 	}
 	ha, _ := a.FindHeuristic("rounding")
 	if _, err := b.TryCreateSolFor(ha); !errors.Is(err, RetcodeInvalidData) {

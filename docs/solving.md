@@ -115,11 +115,15 @@ A stopped solve leaves the model usable. Read the incumbent, call
 | `SolvingTime` | Seconds spent solving |
 | `StatsJSON`, `WriteStatsJSON(path)` | SCIP's full statistics table as JSON |
 
-Individual plugins report their own statistics: `Heuristics()`,
-`Separators()` and `Presolvers()` list SCIP's built-in plugins, and
-`FindHeuristic("rens")` and friends fetch one by name. A `HeuristicPlugin`
-answers `NCalls`, `NSolsFound` and `NBestSolsFound`; a `PresolverPlugin`
-answers `NCalls` and `Time`.
+Individual plugins report their own statistics. `Heuristics()`,
+`Separators()`, `Presolvers()`, `BranchRules()`, `Nodesels()`, `Pricers()`,
+`Conshdlrs()`, `Eventhdlrs()` and `Propagators()` list the plugins in the
+model, and `FindHeuristic("rens")`, `FindBranchRule("relpscost")`,
+`FindPropagator("probing")` and the other `Find*` methods fetch one by
+name. A `HeuristicPlugin` answers `NCalls`, `NSolsFound` and
+`NBestSolsFound`; a `PresolverPlugin` answers `NCalls` and `Time`; a
+`PropagatorPlugin` answers `NCalls`, `NCutoffs`, `NDomredsFound` and
+`Time`.
 
 ## Solving again
 

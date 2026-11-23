@@ -135,6 +135,22 @@ func (c ConshdlrPlugin) Desc() string {
 	return goString(C.SCIPconshdlrGetDesc(c.raw))
 }
 
+// EnfoPriority returns the enforcement priority of the constraint handler.
+// SCIP calls Enforce in descending order of this priority.
+func (c ConshdlrPlugin) EnfoPriority() int32 {
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	c.live("ConshdlrPlugin.EnfoPriority")
+	return int32(C.SCIPconshdlrGetEnfoPriority(c.raw))
+}
+
+// CheckPriority returns the checking priority of the constraint handler.
+// SCIP calls Check in descending order of this priority.
+func (c ConshdlrPlugin) CheckPriority() int32 {
+	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
+	c.live("ConshdlrPlugin.CheckPriority")
+	return int32(C.SCIPconshdlrGetCheckPriority(c.raw))
+}
+
 // CreateEmptyRow creates an empty row for the constraint handler.
 func (c ConshdlrPlugin) CreateEmptyRow(model Model, name string, lhs, rhs float64, local, modifiable, removable bool) (Row, error) {
 	defer runtime.KeepAlive(c.scip.root()) // pin the strong instance, not a weak wrapper, until the C call returns
